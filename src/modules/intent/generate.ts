@@ -21,6 +21,7 @@ import { chooseNonce, LIMITS, neutralizeUntrusted, type OmitReason, prepareDiff 
 import type { CardInputs } from "./inputs.js";
 import {
   type ClaimVerdict,
+  type IntentMatch,
   parseVerifierOutput,
   parseWriterOutput,
   type VerifierOutput,
@@ -35,6 +36,7 @@ import {
   type MessageFacts,
   OUTPUT_SCHEMA,
   PROMPT_VERSION,
+  type RequestedStatus,
   systemPrompt,
 } from "./prompts.js";
 import {
@@ -83,7 +85,7 @@ export interface GenerateOptions {
 
 export interface VerifierClaim {
   id: string;
-  kind: "goal" | "behavior_change" | "out_of_scope";
+  kind: "goal" | "behavior_change" | "out_of_scope" | "requested";
   verdict: ClaimVerdict;
   reason: string;
 }
@@ -112,6 +114,10 @@ export interface CardResult {
     goal: string;
     behaviorChanges: string[];
     outOfScopeEdits: { path: string; reason: string }[];
+    /** intent-v6: what was asked and whether the diff does it; empty on older cards. */
+    requested: { item: string; status: RequestedStatus }[];
+    /** intent-v6; null on older cards. */
+    intentMatch: IntentMatch | null;
   } | null;
   risk: {
     final: RiskClass;
@@ -555,6 +561,8 @@ export async function runCard(
     goal: writer.goal,
     behaviorChanges: writer.behaviorChanges,
     outOfScopeEdits: writer.outOfScopeEdits,
+    requested: writer.requested,
+    intentMatch: writer.intentMatch,
   };
   const claimList = cardClaims(card);
   const expectedIds = claimList.map((c) => c.id);

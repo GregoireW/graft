@@ -131,6 +131,7 @@ nav:
       - Coolify: deploy/coolify.md
     - Troubleshooting: troubleshooting.md
   - Features:
+    - Review summary: features/review-summary.md
     - Provenance: features/provenance.md
     - Intent cards: features/intent-cards.md
     - Policy: features/policy.md

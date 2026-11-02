@@ -46,8 +46,26 @@ export interface Policy {
    * ignores it. Phase 1 step 5 (§11) adds `autoMergeReverts`, likewise only when present.
    */
   guard?: { checks?: string[]; autoMergeReverts?: AutoMergeRisk[] };
-  /** The intent card's language; absent without a `report` key, like `guard`. */
-  report?: { language?: ReportLanguage };
+  /**
+   * The intent card's language, and the AI review checks the review summary reads; absent
+   * without a `report` key, like `guard`.
+   */
+  report?: { language?: ReportLanguage; aiReviews?: AiReviewCheck[] };
+}
+
+/**
+ * `report.ai_reviews`: a check run or status context that an AI reviewer publishes. `model` names
+ * the reviewer's model family (`claude`, `gpt`, `gemini`...): a review whose family appears in the
+ * author's model is not independent. `app`: the slug of the GitHub App that publishes the check
+ * run; a result with the same name from anything else (another app, a commit status) is ignored.
+ * `trustConclusion`: the check fails when the review finds issues, so a success means "no issues";
+ * it counts only with `app` set. Otherwise a success only means the review ran.
+ */
+export interface AiReviewCheck {
+  check: string;
+  model: string;
+  app: string | null;
+  trustConclusion: boolean;
 }
 export interface PolicyRule {
   index: number;
@@ -74,6 +92,10 @@ export const AGENT_RE = /^[A-Za-z0-9][A-Za-z0-9 ._:/@+()-]{0,99}$/;
 const LABEL_RE = /^[^\p{Cc}]{1,50}$/u;
 /** Phase 1 step 4: a check name or status context, 1-200 characters, no control character. */
 export const GUARD_CHECK_RE = /^[^\p{Cc}]{1,200}$/u;
+/** `report.ai_reviews[].model`: a model family name, matched against the author's model. */
+export const MODEL_FAMILY_RE = /^[a-z0-9][a-z0-9._-]{0,49}$/;
+/** `report.ai_reviews[].app`: a GitHub App slug. */
+export const APP_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 const oneOrList = <T extends z.ZodType, L extends z.ZodType>(item: T, list: L) =>
   z.union([item, list]);
@@ -184,12 +206,27 @@ const guardSchema = z.strictObject(
   { error: "wrong_type" },
 );
 
+const aiReviewSchema = z.strictObject(
+  {
+    check: z.string({ error: "wrong_type" }).regex(GUARD_CHECK_RE, { error: "wrong_type" }),
+    model: z.string({ error: "wrong_type" }).regex(MODEL_FAMILY_RE, { error: "wrong_type" }),
+    app: z.string({ error: "wrong_type" }).regex(APP_SLUG_RE, { error: "wrong_type" }).optional(),
+    trust_conclusion: z.boolean({ error: "wrong_type" }).optional(),
+  },
+  { error: "wrong_type" },
+);
+
 const reportSchema = z.strictObject(
   {
     language: z
       .enum(Object.keys(REPORT_LANGUAGES) as [ReportLanguage, ...ReportLanguage[]], {
         error: "language_invalid",
       })
+      .optional(),
+    ai_reviews: z
+      .array(aiReviewSchema, { error: "wrong_type" })
+      .min(1, { error: "wrong_type" })
+      .max(LIMITS.aiReviews, { error: "too_many_items" })
       .optional(),
   },
   { error: "wrong_type" },
@@ -452,6 +489,21 @@ export function normalizePolicy(data: RawPolicy): Policy {
   if (data.report !== undefined) {
     const report: NonNullable<Policy["report"]> = {};
     if (data.report.language !== undefined) report.language = data.report.language;
+    if (data.report.ai_reviews !== undefined) {
+      const seen = new Set<string>();
+      report.aiReviews = data.report.ai_reviews.flatMap((r) => {
+        if (seen.has(r.check)) return [];
+        seen.add(r.check);
+        return [
+          {
+            check: r.check,
+            model: r.model,
+            app: r.app ?? null,
+            trustConclusion: r.trust_conclusion ?? false,
+          },
+        ];
+      });
+    }
     policy.report = report;
   }
   return policy;

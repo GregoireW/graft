@@ -4,6 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { JobContext } from "../../core/context.js";
 import type { SignalListener } from "../../core/signals.js";
 import { defineWebhookHandler } from "../../webhooks/handler.js";
 import { parsePayload } from "../../webhooks/payload.js";
@@ -202,6 +203,80 @@ export const rerequestPolicy = defineWebhookHandler({
         singletonKey: `policy-rerun:${p.repository.id}:${prNumber}:${Math.floor(ctx.clock.now().getTime() / 60_000)}`,
       },
     );
+  },
+});
+
+const checkSuitePayload = z.looseObject({
+  action: z.literal("completed"),
+  check_suite: z.looseObject({
+    head_sha: SHA,
+    app: z.looseObject({ id: z.number().int() }).nullish(),
+  }),
+  repository: z.looseObject({ id: z.number().int().positive(), full_name: FULL_NAME }),
+  installation: z.looseObject({ id: z.number().int().positive() }),
+});
+
+const statusPayload = z.looseObject({
+  sha: SHA,
+  state: z.string(),
+  repository: z.looseObject({ id: z.number().int().positive(), full_name: FULL_NAME }),
+  installation: z.looseObject({ id: z.number().int().positive() }),
+});
+
+/** The window that gathers the results of one head into one re-evaluation. */
+export const CHECKS_BATCH_SECONDS = 30;
+
+/**
+ * A CI or AI review result of an open PR's head is in: re-evaluate once per head per window, a
+ * window later, so the review summary shows it. A check suite covers every run in it (an Actions
+ * workflow, an app's checks); a status covers itself. Graft's own suites never trigger.
+ */
+async function scheduleForHead(
+  ctx: JobContext,
+  p: { repository: { id: number; full_name: string }; installation: { id: number } },
+  headSha: string,
+  deliveryId: string,
+): Promise<void> {
+  const change = await findChangeByHead(ctx.db, p.repository.id, headSha);
+  if (change?.state !== "open") return;
+  if (!(await getActiveInstallation(ctx.db, p.installation.id))) return;
+  const window = Math.floor(ctx.clock.now().getTime() / (CHECKS_BATCH_SECONDS * 1000));
+  await ctx.queue.send(
+    policyEvaluateJob,
+    {
+      installationId: p.installation.id,
+      repositoryId: p.repository.id,
+      ...splitFullName(p.repository.full_name),
+      prNumber: change.pr_number,
+      trigger: "checks",
+      deliveryId,
+    },
+    {
+      singletonKey: `policy:checks:${change.id}:${headSha}:${window}`,
+      startAfterSeconds: CHECKS_BATCH_SECONDS,
+    },
+  );
+}
+
+export const checksPolicy = defineWebhookHandler({
+  name: "policy.checks",
+  on: ["check_suite.completed"] as const,
+  async handle(event, ctx) {
+    const p = parsePayload(checkSuitePayload, event, ctx.log);
+    if (!p) return;
+    if (p.check_suite.app?.id === ctx.config.githubAppId) return;
+    await scheduleForHead(ctx, p, p.check_suite.head_sha, event.deliveryId);
+  },
+});
+
+export const statusPolicy = defineWebhookHandler({
+  name: "policy.status",
+  on: ["status"] as const,
+  async handle(event, ctx) {
+    const p = parsePayload(statusPayload, event, ctx.log);
+    if (!p) return;
+    if (p.state === "pending") return;
+    await scheduleForHead(ctx, p, p.sha, event.deliveryId);
   },
 });
 

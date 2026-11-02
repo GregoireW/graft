@@ -16,13 +16,14 @@ flowchart LR
     RISK --> OUT["intent section + graft/intent check (neutral)"]
 ```
 
-For every open PR, Graft writes an **intent card** into the `intent` section of the managed comment and into a `graft/intent` check run (always `neutral` in Phase 0). Reviewers read the card instead of the PR description. It holds:
+For every open PR, Graft writes an **intent card** into the `intent` section of the managed comment and into a `graft/intent` check run (always `neutral` in Phase 0). Reviewers read the card instead of the PR description; the [review summary](review-summary.md) at the top of the comment draws its intent and risk lines from it. The comment shows the goal and folds the rest. The card holds:
 
 - **Goal**: one sentence stating what the diff does.
+- **What was asked vs what was done** (since `intent-v6`): what the linked issue (or, without one, the description) asks, each item marked done, partly done, not done or left for later, judged from the diff. The verifier checks every item marked done. Then what the diff does that nobody listed: **Also changed** and out-of-scope edits.
 - **Behavior changes**: observable effects, most important first.
 - **Also changed** (since `intent-v5`): observable effects the verifier found in the diff that the writer left out. They complete the card; they do not make it wrong.
 - **Out-of-scope edits**: files the goal does not explain (from the writer, plus any the verifier flags).
-- **Risk**: `trivial`, `logic` or `sensitive`, shown with where it came from (`rules`, `writer`, `verifier`).
+- **Risk**: `trivial`, `logic` or `sensitive`, shown with where it came from (`rules`, `writer`, `verifier`), under **How this card was made**.
 
 **How it is made.** A writer model reads the PR title and description, the linked issue (`Fixes #N`, the `Graft-Task` issue, or the first `#N`), the file list and the diff. A second call, the verifier, sees the diff, the file list, the changed files as they are at the head (the file context, below) and the card, but **not** the title, description or issue, and checks every claim. The PR description comes from the agent being judged, so it is untrusted input: it is wrapped in nonce-tagged data blocks, the prompts say it is data, and injection markers raise the floor.
 

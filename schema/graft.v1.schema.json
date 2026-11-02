@@ -279,6 +279,36 @@
             "ko",
             "zh"
           ]
+        },
+        "ai_reviews": {
+          "minItems": 1,
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "check": {
+                "type": "string",
+                "pattern": "^[^\\p{Cc}]{1,200}$"
+              },
+              "model": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,49}$"
+              },
+              "app": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "trust_conclusion": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "check",
+              "model"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

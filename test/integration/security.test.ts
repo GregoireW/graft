@@ -226,8 +226,8 @@ describe("end to end", () => {
       const text = api.state.comments[0]?.body ?? "";
       // The check runs come after the comment in each publish.
       return (
-        text.includes("### Intent") &&
-        text.includes("### Provenance") &&
+        text.includes("**Goal:**") &&
+        text.includes("<summary>Provenance:") &&
         api.state.checkRuns.some((r) => r.name === "graft/intent") &&
         api.state.checkRuns.some((r) => r.name === "graft/provenance")
       );

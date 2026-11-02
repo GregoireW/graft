@@ -6,8 +6,10 @@
  *    separated by blank lines, then a blank line and a `<sub>` footer. Known sections appear in
  *    SECTION_ORDER. Unknown sections (`[a-z][a-z0-9-]*`) found in an existing body are kept
  *    verbatim after the known ones, in their original order.
- * 2. Ownership. Each module writes only its own section. `upsertManagedSection` replaces or
- *    inserts that one section and keeps every other section byte-for-byte.
+ * 2. Ownership. Each module writes only its own sections. `upsertManagedSection` replaces or
+ *    inserts the sections it is given and keeps every other section byte-for-byte. The policy
+ *    job owns two: `summary` (the verdict at the top, which reads every module's results) and
+ *    `policy`, written in one request.
  * 3. Finding the comment. (a) `knownCommentId`, if the comment still exists, starts with the
  *    marker and is ours. (b) Otherwise the first of the issue's comments (100 per page, at most
  *    10 pages) that starts with the marker and is ours. (c) Otherwise a new comment is created.
@@ -30,7 +32,7 @@ import type { GitHubClient } from "./client-factory.js";
 import { classifyGitHubError } from "./errors.js";
 
 export const MANAGED_COMMENT_MARKER = "<!-- graft:managed-comment v1 -->";
-export const SECTION_ORDER = ["intent", "provenance", "policy"] as const;
+export const SECTION_ORDER = ["summary", "intent", "provenance", "policy"] as const;
 export type SectionName = (typeof SECTION_ORDER)[number];
 export const MAX_SECTION_CHARS = 20_000;
 export const MAX_COMMENT_CHARS = 65_536;
@@ -91,6 +93,8 @@ export interface UpsertManagedSectionOptions {
   knownCommentId: number | null;
   section: SectionName;
   markdown: string;
+  /** Other sections the same caller owns, written in the same request. */
+  extraSections?: readonly { section: SectionName; markdown: string }[];
 }
 
 export function isOurComment(
@@ -111,11 +115,14 @@ export async function upsertManagedSection(
   octokit: GitHubClient,
   o: UpsertManagedSectionOptions,
 ): Promise<{ commentId: number; action: "created" | "updated" | "unchanged" }> {
+  const writes = [{ section: o.section, markdown: o.markdown }, ...(o.extraSections ?? [])];
   // Deterministic failures: retrying cannot help, so they are permanent.
-  if (o.markdown.includes("<!-- graft:"))
-    throw new PermanentJobError("section markdown contains a graft marker", "invalid_output");
-  if (o.markdown.length > MAX_SECTION_CHARS)
-    throw new PermanentJobError("section markdown is too long", "invalid_output");
+  for (const w of writes) {
+    if (w.markdown.includes("<!-- graft:"))
+      throw new PermanentJobError("section markdown contains a graft marker", "invalid_output");
+    if (w.markdown.length > MAX_SECTION_CHARS)
+      throw new PermanentJobError("section markdown is too long", "invalid_output");
+  }
   const { owner, repo } = o;
   const ownership = { appId: o.appId, appBotLogin: o.appBotLogin };
 
@@ -152,7 +159,7 @@ export async function upsertManagedSection(
   }
 
   const sections = existing ? (parseManagedComment(existing.body ?? "") ?? new Map()) : new Map();
-  sections.set(o.section, o.markdown);
+  for (const w of writes) sections.set(w.section, w.markdown);
   const body = renderManagedComment(sections);
   if (body.length > MAX_COMMENT_CHARS)
     throw new PermanentJobError("managed comment would exceed 65,536 chars", "invalid_output");

@@ -186,6 +186,9 @@ export interface IntentCardsTable {
   goal: string | null;
   behavior_changes: Json<string[]>;
   out_of_scope_edits: Json<{ path: string; reason: string }[]>;
+  /** intent-v6 (0017): what was asked and whether the diff does it. */
+  requested: Json<{ item: string; status: "done" | "partial" | "missing" | "deferred" }[]>;
+  intent_match: "matches" | "partial" | "differs" | "unknown" | null;
   /** Final class. */
   risk_class: RiskClass;
   risk_floor: RiskClass;

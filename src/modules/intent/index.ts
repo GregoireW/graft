@@ -60,5 +60,6 @@ export {
   type IntentCardRow,
   latestPublishedCard,
   pickEffectiveVotes,
+  rowToView,
 } from "./store.js";
 export { feedbackSweepJob, listChangesToPoll, pollReactions };

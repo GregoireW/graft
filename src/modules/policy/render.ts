@@ -752,3 +752,29 @@ function renderDetails(v: PolicyView): string | null {
   }
   return lines.join("\n");
 }
+
+// ---------------------------------------------------------------------------------------------
+// The comment's fold
+// ---------------------------------------------------------------------------------------------
+
+/** Plain words only: GitHub does not render Markdown inside `<summary>`, and a team must never be
+ * named there unescaped (D19). */
+function foldLabel(v: PolicyView): string {
+  const report = v.mode.effective === "enforce" ? "" : " (report only)";
+  const verdict = v.verdict;
+  if (v.state === "missing") return "Policy: no graft.yaml";
+  if (v.state === "invalid" || verdict === null) return "Policy: graft.yaml is invalid";
+  if (verdict.outcome === "would_block") return `Policy: blocked${report}`;
+  if (verdict.outcome === "would_approve") return `Policy: no review required${report}`;
+  return `Policy: why ${plural(verdict.humans, "human", "humans")}${report}`;
+}
+
+/**
+ * The policy section as the managed comment shows it: folded under the summary, which already
+ * says what review is needed. The check run keeps the unfolded section.
+ */
+export function foldPolicySection(v: PolicyView, section: string): string {
+  const body = section.replace(/^### Policy\n\n/, "");
+  const folded = `<details><summary>${foldLabel(v)}</summary>\n\n${body}\n\n</details>`;
+  return folded.length > MAX_SECTION_CHARS ? section : folded;
+}

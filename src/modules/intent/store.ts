@@ -18,6 +18,8 @@ function resultToValues(result: CardResult) {
     goal: card?.goal ?? null,
     behavior_changes: json(card?.behaviorChanges ?? []),
     out_of_scope_edits: json(card?.outOfScopeEdits ?? []),
+    requested: json(card?.requested ?? []),
+    intent_match: card?.intentMatch ?? null,
     risk_class: result.risk.final,
     risk_floor: result.risk.floor,
     floor_reasons: json(result.risk.floorReasons),
@@ -71,6 +73,8 @@ export function rowToView(row: IntentCardRow): IntentView {
             goal: row.goal,
             behaviorChanges: row.behavior_changes,
             outOfScopeEdits: row.out_of_scope_edits,
+            requested: row.requested,
+            intentMatch: row.intent_match,
           }
         : null,
     risk: {

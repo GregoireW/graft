@@ -17,6 +17,8 @@ export const LIMITS = {
   teams: 10,
   /** Phase 1 step 4: `guard.checks`. */
   guardChecks: 50,
+  /** `report.ai_reviews`. */
+  aiReviews: 10,
   globChars: 200,
   /** Characters other than `*` in one glob segment, and in the whole glob (cost cap, review 2). */
   globSegmentChars: 48,

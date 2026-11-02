@@ -137,6 +137,30 @@ describe("managed comment", () => {
     expect(api.state.comments).toHaveLength(1);
   });
 
+  it("U-MC-7b extra sections are written in the same request, the summary first", async () => {
+    const { api, call, writes } = await setup();
+    const first = await call({ section: "intent", markdown: "I1" });
+    const before = writes().length;
+    await call({
+      knownCommentId: first.commentId,
+      section: "policy",
+      markdown: "P1",
+      extraSections: [{ section: "summary", markdown: "S1" }],
+    });
+    expect(writes()).toHaveLength(before + 1);
+    const body = api.state.comments[0]?.body ?? "";
+    expect(parseManagedComment(body)).toEqual(
+      new Map([
+        ["summary", "S1"],
+        ["intent", "I1"],
+        ["policy", "P1"],
+      ]),
+    );
+    await expect(
+      call({ extraSections: [{ section: "summary", markdown: "<!-- graft:x" }] }),
+    ).rejects.toMatchObject({ name: "PermanentJobError" });
+  });
+
   it("U-MC-8 a section with a graft marker, or over 20,000 characters, throws before any request", async () => {
     const { api, call } = await setup();
     const permanent = { name: "PermanentJobError", reason: "invalid_output" };

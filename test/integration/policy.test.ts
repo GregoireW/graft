@@ -171,9 +171,17 @@ describe("policy engine (integration)", () => {
     expect(checks[0]?.output.title).toBe(
       "Would require 2 humans (1 from @graft-sandbox/platform or @graft-sandbox/security) · risk provisional",
     );
-    expect(checks[0]?.output.summary).toBe(policySection());
-    expect(policySection()).toContain("### Policy");
+    // The comment folds the section the check run shows in full, under the review summary.
+    const full = checks[0]?.output.summary ?? "";
+    expect(full).toContain("### Policy");
+    expect(policySection()).toBe(
+      `<details><summary>Policy: why 2 humans (report only)</summary>\n\n${full.replace(/^### Policy\n\n/, "")}\n\n</details>`,
+    );
     expect(policySection()).toContain("· report only");
+    const summary = parseManagedComment(api.state.comments[0]?.body ?? "")?.get("summary") ?? "";
+    expect(summary).toContain("### ⏳ Graft is still reviewing");
+    expect(summary).toContain("- **Human review:** **2 approvals needed** (");
+    expect(summary).toContain(") · 0 so far · *report mode: Graft blocks nothing*");
 
     const rows = await verdicts();
     expect(rows).toHaveLength(1);

@@ -18,6 +18,7 @@ import type { GitHubClient } from "../../github/client-factory.js";
 import { toJobError } from "../../github/errors.js";
 import { upsertManagedSection } from "../../github/managed-comment.js";
 import { MutationRefusedError } from "../../github/mutation-guard.js";
+import { hasStatusesRead } from "../../modes/index.js";
 import {
   type ApproverFacts,
   type Enforced,
@@ -37,7 +38,7 @@ import {
   getActiveInstallation,
   getActiveRepository,
 } from "../installations/index.js";
-import { latestPublishedCard } from "../intent/index.js";
+import { latestPublishedCard, rowToView } from "../intent/index.js";
 import { getEffectiveModes } from "../modes/effective.js";
 import { getChangeProvenance } from "../provenance/index.js";
 import { resolveApprovers } from "./approvals.js";
@@ -45,6 +46,7 @@ import { type BreakGlassFacts, type BreakGlassState, resolveBreakGlass } from ".
 import { buildFacts, listChangedPaths, listCommitLogins, listReviews } from "./facts.js";
 import {
   type BreakGlassView,
+  foldPolicySection,
   type McpExclusion,
   POLICY_CHECK_NAME,
   type PolicyView,
@@ -53,6 +55,7 @@ import {
   renderPolicySection,
   viewOutcome,
 } from "./render.js";
+import { type HeadSignals, readHeadSignals } from "./signals.js";
 import {
   checkRunIdForHead,
   findVerdict,
@@ -61,6 +64,7 @@ import {
   upsertVerdict,
   type VerdictValues,
 } from "./store.js";
+import { renderSummarySection } from "./summary.js";
 
 export const POLICY_EVALUATE_JOB = "policy.evaluate";
 export const POLICY_FANOUT_JOB = "policy.fanout";
@@ -75,6 +79,8 @@ export const POLICY_TRIGGERS = [
   // Phase 1 step 2: a team or membership change (D14), the end of the card wait (D9).
   "team",
   "card_wait",
+  // A CI or AI review check of the head finished: the review summary shows it.
+  "checks",
 ] as const;
 export const FANOUT_MAX = 100;
 const FANOUT_BATCH = 10;
@@ -327,6 +333,24 @@ export async function evaluatePolicyJobRun(
     addsPolicyFile: false,
     mode: { effective: modes.policy.effective },
   };
+  // Read for the facts and for the review summary, whatever the policy's state.
+  const card = await latestPublishedCard(ctx.db, change.id);
+  const provenance = await getChangeProvenance(ctx.db, change.id);
+  let signals: HeadSignals | null = null;
+  try {
+    signals = await readHeadSignals(octokit, {
+      owner: data.owner,
+      repo: data.repo,
+      headSha,
+      appId: config.githubAppId,
+      aiReviews: loaded.status === "ok" ? (loaded.policy.report?.aiReviews ?? []) : [],
+      statusesRead:
+        installation.permissions_read_at !== null && hasStatusesRead(installation.permissions),
+    });
+  } catch (err) {
+    // The summary says nothing about CI rather than holding the verdict back.
+    ctx.log.warn({ err, prNumber: data.prNumber }, "policy: head checks not read");
+  }
   try {
     if (loaded.status === "ok") {
       const listed = await listChangedPaths(octokit, {
@@ -340,8 +364,6 @@ export async function evaluatePolicyJobRun(
         repo: data.repo,
         prNumber: data.prNumber,
       });
-      const card = await latestPublishedCard(ctx.db, change.id);
-      const provenance = await getChangeProvenance(ctx.db, change.id);
       // After the database reads, so that the wall-clock guard does not include them.
       const globBudget = new GlobBudget();
       const facts = buildFacts({
@@ -474,6 +496,19 @@ export async function evaluatePolicyJobRun(
   const title = policyTitle(view);
   const summary = renderPolicySection(view);
   const details = renderPolicyDetails(view);
+  const overview = renderSummarySection({
+    headSha,
+    card: card === undefined ? null : rowToView(card),
+    policy: view,
+    signals,
+    author: {
+      kind: provenance?.head_sha === headSha ? provenance.author_kind : null,
+      model: provenance?.head_sha === headSha ? provenance.model : null,
+      agent: provenance?.head_sha === headSha ? provenance.agent : null,
+      modelDisputed: (provenance?.conflicts.model?.length ?? 0) > 1,
+    },
+  });
+  const folded = foldPolicySection(view, summary);
   const factsHash = policyFactsHash({
     verdict: view.verdict,
     approvals: view.approvals,
@@ -488,7 +523,7 @@ export async function evaluatePolicyJobRun(
     enforced,
     published,
     breakGlass: breakGlassHashTerm(breakGlass, headSha),
-    rendered: { title, summary, details },
+    rendered: { title, summary, details, comment: overview },
   });
 
   /**
@@ -674,7 +709,8 @@ export async function evaluatePolicyJobRun(
         appBotLogin: config.githubAppSlug ? `${config.githubAppSlug}[bot]` : undefined,
         knownCommentId: current.graft_comment_id,
         section: "policy",
-        markdown: summary,
+        markdown: folded,
+        extraSections: [{ section: "summary", markdown: overview }],
       });
       await tx
         .updateTable("changes")
@@ -824,7 +860,7 @@ export interface FactsHashInput {
   /** Step 3 (D10): a break-glass changes the conclusion, so it must republish on its own. */
   breakGlass: BreakGlassHashTerm;
   /** What reviewers read depends on more than the verdict (author name, labels, size ...). */
-  rendered: { title: string; summary: string; details: string };
+  rendered: { title: string; summary: string; details: string; comment?: string };
 }
 
 /** The "unchanged" short cut compares this hash: everything that decides what GitHub shows. */

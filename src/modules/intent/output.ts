@@ -1,6 +1,7 @@
 /** Validation and capping of model output (T11.3, T11.4). Pure. */
 import { z } from "zod";
 import type { RiskClass } from "../../db/schema.js";
+import type { RequestedStatus } from "./prompts.js";
 
 /** Cut to `max` code points, ending with an ellipsis when shortened. */
 export function cut(text: string, max: number): string {
@@ -12,6 +13,9 @@ const RISK = z.enum(["trivial", "logic", "sensitive"]);
 const trimmed = (max: number) => z.string().transform((s) => cut(s.trim(), max));
 /** Format characters (U+200B, ...) are not text: a string made of them is empty. */
 const blank = (s: string): boolean => s.replace(/\p{Cf}/gu, "").trim() === "";
+
+export const INTENT_MATCHES = ["matches", "partial", "differs", "unknown"] as const;
+export type IntentMatch = (typeof INTENT_MATCHES)[number];
 
 const writerSchema = z.strictObject({
   goal: z
@@ -32,6 +36,16 @@ const writerSchema = z.strictObject({
   risk_class: RISK,
   risk_reason: trimmed(300),
   out_of_scope_edits: z.array(z.strictObject({ path: z.string(), reason: z.string() })),
+  // intent-v6. Optional here so that scripted replies written before it still parse.
+  requested: z
+    .array(
+      z.strictObject({
+        item: z.string(),
+        status: z.enum(["done", "partial", "missing", "deferred"]),
+      }),
+    )
+    .optional(),
+  intent_match: z.enum(INTENT_MATCHES).optional(),
   instructions_in_data: z.boolean(),
 });
 
@@ -43,6 +57,9 @@ export interface WriterOutput {
   outOfScopeEdits: { path: string; reason: string }[];
   /** Entries dropped because the path is not in the file list. */
   droppedOutOfScope: number;
+  requested: { item: string; status: RequestedStatus }[];
+  /** null when the reply has no intent_match (a reply scripted before intent-v6). */
+  intentMatch: IntentMatch | null;
   instructionsInData: boolean;
 }
 
@@ -74,6 +91,11 @@ export function parseWriterOutput(
       riskReason: d.risk_reason,
       outOfScopeEdits: kept.slice(0, 20),
       droppedOutOfScope: dropped,
+      requested: (d.intent_match === "unknown" ? [] : (d.requested ?? []))
+        .map((r) => ({ item: cut(r.item.trim(), 150), status: r.status }))
+        .filter((r) => !blank(r.item))
+        .slice(0, 8),
+      intentMatch: d.intent_match ?? null,
       instructionsInData: d.instructions_in_data,
     },
   };

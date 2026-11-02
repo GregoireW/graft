@@ -5,6 +5,7 @@
  */
 import { codeSpan, escapeProse } from "../../github/markdown.js";
 import type { CardResult, FailureReason } from "./generate.js";
+import type { RequestedStatus } from "./prompts.js";
 import type { FloorReason, FloorRuleId } from "./risk-floor.js";
 
 export interface IntentView extends CardResult {
@@ -111,18 +112,23 @@ function riskLine(v: CardResult): string {
   return line;
 }
 
-const LABEL_FOR_KIND = (c: CardResult["verifier"]["claims"][number], idx: Map<string, number>) =>
+export const LABEL_FOR_KIND = (
+  c: CardResult["verifier"]["claims"][number],
+  idx: Map<string, number>,
+) =>
   c.kind === "goal"
     ? "The goal"
     : c.kind === "behavior_change"
       ? `Behavior change ${idx.get(c.id)}`
-      : `Out-of-scope edit ${idx.get(c.id)}`;
+      : c.kind === "requested"
+        ? `Requested item ${idx.get(c.id)}`
+        : `Out-of-scope edit ${idx.get(c.id)}`;
 
-function claimIndex(id: string): number {
+export function claimIndex(id: string): number {
   return Number(id.slice(1));
 }
 
-function failingClaims(v: CardResult): CardResult["verifier"]["claims"] {
+export function failingClaims(v: CardResult): CardResult["verifier"]["claims"] {
   return v.verifier.claims.filter(
     (c) => c.verdict === "unsupported" || c.verdict === "contradicted",
   );
@@ -132,17 +138,70 @@ function failingClaims(v: CardResult): CardResult["verifier"]["claims"] {
  * A card the verifier contradicts. Cards stored before intent-v5 also say "disagree" when the
  * verifier only found missing behavior changes; those now show the "Also changed" list instead.
  */
-function disagrees(v: CardResult): boolean {
+export function disagrees(v: CardResult): boolean {
   return v.verifier.status === "disagree" && failingClaims(v).length > 0;
 }
 
-/** Behavior changes the verifier found in the diff that the card does not mention. */
-function alsoChangedBlock(v: CardResult, maxBullets: number): string[] {
-  if (v.verifier.status === "error" || v.verifier.missing.length === 0) return [];
-  const bullets = v.verifier.missing.map((m) => `- ${escapeProse(m, 200)}`);
-  const shown = bullets.slice(0, maxBullets);
-  if (bullets.length > shown.length) shown.push(`- …and ${bullets.length - shown.length} more`);
-  return ["**Also changed** · found by the verifier, not listed above", "", ...shown];
+const REQUESTED_MARK: Record<RequestedStatus, string> = {
+  done: "✅",
+  partial: "🟡",
+  missing: "❌",
+  deferred: "⏭️",
+};
+const REQUESTED_NOTE: Record<RequestedStatus, string> = {
+  done: "",
+  partial: " (partly done)",
+  missing: " (not done)",
+  deferred: " (left for later)",
+};
+
+/**
+ * What was asked against what the diff does (intent-v6), then what the diff does that nobody asked
+ * for: behavior changes the verifier found that the card does not mention ("Also changed") and
+ * out-of-scope edits. Empty when there is nothing to list.
+ */
+function askedBlock(v: CardResult, o: { maxOos: number; maxBullets: number }): string[] {
+  const card = v.card as NonNullable<CardResult["card"]>;
+  const unsupported = new Set(
+    failingClaims(v)
+      .filter((c) => c.kind === "requested")
+      .map((c) => claimIndex(c.id)),
+  );
+  const asked = card.requested.map((r, i) => {
+    const flag = unsupported.has(i + 1) ? " · ⚠️ the verifier does not find it in the diff" : "";
+    return `- ${REQUESTED_MARK[r.status]} ${escapeProse(r.item, 150)}${REQUESTED_NOTE[r.status]}${flag}`;
+  });
+  const extra =
+    v.verifier.status === "error"
+      ? []
+      : v.verifier.missing.map(
+          (m) => `- ➕ Also changed, found by the verifier: ${escapeProse(m, 200)}`,
+        );
+  const shownExtra = extra.slice(0, o.maxBullets);
+  if (extra.length > shownExtra.length)
+    shownExtra.push(`- …and ${extra.length - shownExtra.length} more`);
+  const oos: string[] = [
+    ...card.outOfScopeEdits.map(
+      (e) => `- ➕ Out of scope: ${codeSpan(e.path)}: ${escapeProse(e.reason, 200)}`,
+    ),
+    ...v.verifier.unexplained.map(
+      (p) => `- ➕ Out of scope: ${codeSpan(p)}: flagged by the verifier`,
+    ),
+  ];
+  const shownOos = oos.slice(0, o.maxOos);
+  if (oos.length > shownOos.length) shownOos.push(`- …and ${oos.length - shownOos.length} more`);
+
+  const body: string[] = [];
+  if (card.intentMatch === "unknown") {
+    body.push("Neither a linked issue nor the description says what was wanted.", "");
+  }
+  body.push(...asked, ...shownExtra, ...shownOos);
+  if (body.length === 0) return [];
+  const title =
+    card.requested.length > 0 || card.intentMatch === "unknown"
+      ? "What was asked vs what was done"
+      : `Also changed (${extra.length + oos.length})`;
+  return [`<details><summary>${title}</summary>`, "", ...body, "", "</details>"];
 }
 
 function alsoChangedTitle(v: CardResult): string {
@@ -224,6 +283,7 @@ function detailsBlock(v: CardResult): string[] {
   return [
     "<details><summary>How this card was made</summary>",
     "",
+    `- ${riskLine(v)}`,
     `- ${floorLine(v)}`,
     `- ${writerLine}`,
     `- ${inputsLine(v)}`,
@@ -238,31 +298,18 @@ function renderOk(
   o: { details: boolean; maxOos: number; maxBullets: number },
 ): string {
   const card = v.card as NonNullable<CardResult["card"]>;
-  const lines: string[] = [
-    "### Intent",
-    "",
-    `**Goal:** ${escapeProse(card.goal, 200)}`,
-    "",
-    riskLine(v),
-    "",
-    "**Behavior changes**",
+  const n = card.behaviorChanges.length;
+  const lines: string[] = [`**Goal:** ${escapeProse(card.goal, 200)}`, ""];
+  const asked = askedBlock(v, o);
+  if (asked.length > 0) lines.push(...asked, "");
+  lines.push(
+    `<details><summary>Behavior changes (${n})</summary>`,
     "",
     ...card.behaviorChanges.map((b) => `- ${escapeProse(b, 200)}`),
     "",
-  ];
-  const also = alsoChangedBlock(v, o.maxBullets);
-  if (also.length > 0) lines.push(...also, "");
-  const oos: string[] = [
-    ...card.outOfScopeEdits.map((e) => `- ${codeSpan(e.path)}: ${escapeProse(e.reason, 200)}`),
-    ...v.verifier.unexplained.map((p) => `- ${codeSpan(p)}: flagged by the verifier`),
-  ];
-  if (oos.length === 0) {
-    lines.push("**Out-of-scope edits:** none", "");
-  } else {
-    const shown = oos.slice(0, o.maxOos);
-    if (oos.length > shown.length) shown.push(`- …and ${oos.length - shown.length} more`);
-    lines.push("**Out-of-scope edits**", "", ...shown, "");
-  }
+    "</details>",
+    "",
+  );
   if (v.instructionsInData) {
     lines.push(
       "> [!CAUTION]",
@@ -275,6 +322,7 @@ function renderOk(
   const unchecked = uncheckedBlock(v, o.maxBullets);
   if (unchecked.length > 0) lines.push(...unchecked, "");
   if (o.details) lines.push(...detailsBlock(v), "");
+  else lines.push(`${riskLine(v)}`, "");
   lines.push(
     `Card ${code(v.id.slice(0, 8))} · head ${code(sha7(v.headSha))} · Rate this card with 👍 or 👎 on this comment, or with the buttons on the ${code(INTENT_CHECK_NAME)} check.`,
   );
@@ -287,9 +335,7 @@ function renderUnavailable(v: IntentView, o: { retryScheduled: boolean }): strin
     ? `Head ${code(sha7(v.headSha))} · Graft retries automatically. You can also re-run the ${code(INTENT_CHECK_NAME)} check.`
     : `Head ${code(sha7(v.headSha))} · Re-run the ${code(INTENT_CHECK_NAME)} check to try again.`;
   return [
-    "### Intent",
-    "",
-    `**Card unavailable:** ${reason}`,
+    `**Intent card unavailable:** ${reason}`,
     "",
     riskLine(v),
     "",
@@ -324,9 +370,7 @@ export function renderIntentSection(v: IntentView, o: { retryScheduled: boolean 
 
 export function renderPendingSection(o: { headSha: string; previousHeadSha: string }): string {
   return [
-    "### Intent",
-    "",
-    `Writing the card for head ${code(sha7(o.headSha))}. The previous card (head ${code(sha7(o.previousHeadSha))}) no longer matches this pull request.`,
+    `Writing the intent card for head ${code(sha7(o.headSha))}. The previous card (head ${code(sha7(o.previousHeadSha))}) no longer matches this pull request.`,
   ].join("\n");
 }
 

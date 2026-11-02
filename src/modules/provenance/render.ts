@@ -80,9 +80,18 @@ function mcpLine(m: NonNullable<RenderOptions["mcp"]>): string {
   return `Reported through MCP (unverified): ${parts.join(", ")} · ${verdict}`;
 }
 
+/** Plain words only: GitHub does not render Markdown inside `<summary>`. */
+const SUMMARY_WHO: Record<ProvenanceResult["authorKindReason"], string> = {
+  trailer: "written by an agent (Graft trailers)",
+  bot_account: "written by an agent (bot account)",
+  configured_login: "written by an agent (configured agent login)",
+  agent_coauthor: "written by an agent (agent co-author)",
+  none: "written by a human",
+};
+
 export function renderProvenanceSection(r: ProvenanceResult, o: RenderOptions): string {
   const lines = [
-    "### Provenance",
+    `<details><summary>Provenance: ${SUMMARY_WHO[r.authorKindReason]}</summary>`,
     "",
     "| | |",
     "| --- | --- |",
@@ -97,15 +106,11 @@ export function renderProvenanceSection(r: ProvenanceResult, o: RenderOptions): 
 
   if (r.warnings.length > 0) {
     const n = r.warnings.length;
-    lines.push(
-      "",
-      `<details><summary>${n} provenance ${n === 1 ? "warning" : "warnings"}</summary>`,
-      "",
-    );
+    lines.push("", `**${n} provenance ${n === 1 ? "warning" : "warnings"}**`, "");
     for (const w of r.warnings.slice(0, MAX_LISTED_WARNINGS)) lines.push(warningItem(w));
     if (n > MAX_LISTED_WARNINGS) lines.push(`- …and ${n - MAX_LISTED_WARNINGS} more`);
-    lines.push("", "</details>");
   }
+  lines.push("", "</details>");
   return lines.join("\n");
 }
 
