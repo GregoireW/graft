@@ -504,6 +504,8 @@ export async function evaluatePolicyJobRun(
     author: {
       kind: provenance?.head_sha === headSha ? provenance.author_kind : null,
       model: provenance?.head_sha === headSha ? provenance.model : null,
+      agent: provenance?.head_sha === headSha ? provenance.agent : null,
+      modelDisputed: (provenance?.conflicts.model?.length ?? 0) > 1,
     },
   });
   const folded = foldPolicySection(view, summary);

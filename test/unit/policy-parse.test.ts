@@ -1560,6 +1560,7 @@ describe("graft.yaml report key", () => {
         "  ai_reviews:",
         "    - check: claude-review",
         "      model: claude",
+        "      app: github-actions",
         "      trust_conclusion: true",
         "    - check: CodeRabbit",
         "      model: coderabbit",
@@ -1571,12 +1572,15 @@ describe("graft.yaml report key", () => {
     if (!res.ok) throw new Error(JSON.stringify(res.errors));
     expect(res.policy.report).toEqual({
       aiReviews: [
-        { check: "claude-review", model: "claude", trustConclusion: true },
-        { check: "CodeRabbit", model: "coderabbit", trustConclusion: false },
+        { check: "claude-review", model: "claude", app: "github-actions", trustConclusion: true },
+        { check: "CodeRabbit", model: "coderabbit", app: null, trustConclusion: false },
       ],
     });
     expect(codes("report: { ai_reviews: [] }\n")).toEqual(["wrong_type"]);
     expect(codes("report: { ai_reviews: [{ check: x }] }\n")).toEqual(["wrong_type"]);
+    expect(codes("report: { ai_reviews: [{ check: x, model: y, app: 'Bad App' }] }\n")).toEqual([
+      "wrong_type",
+    ]);
     expect(codes("report: { ai_reviews: [{ check: x, model: Claude }] }\n")).toEqual([
       "wrong_type",
     ]);

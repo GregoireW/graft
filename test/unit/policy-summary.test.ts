@@ -164,14 +164,19 @@ function policyView(f: PolicyFacts = facts(), over: Partial<PolicyView> = {}): P
 }
 
 const REVIEWS: AiReviewCheck[] = [
-  { check: "claude-review", model: "claude", trustConclusion: false },
+  { check: "claude-review", model: "claude", app: "github-actions", trustConclusion: false },
 ];
 
 function signals(
   results: { name: string; state: "passed" | "failed" | "pending" | "other" }[],
   reviews: AiReviewCheck[] = REVIEWS,
 ): HeadSignals {
-  return summarizeSignals(HEAD, results, reviews, false);
+  return summarizeSignals(
+    HEAD,
+    results.map((r) => ({ ...r, app: "github-actions" })),
+    reviews,
+    false,
+  );
 }
 
 const ci = (passed: number, extra: { name: string; state: "failed" | "pending" }[] = []) => [
@@ -213,7 +218,9 @@ describe("review summary", () => {
   });
 
   it("U-SUM-2 a sensitive change is never safe, whatever CI and AI reviews say", () => {
-    const trusted: AiReviewCheck[] = [{ check: "review", model: "gpt", trustConclusion: true }];
+    const trusted: AiReviewCheck[] = [
+      { check: "review", model: "gpt", app: "github-actions", trustConclusion: true },
+    ];
     const i = input({
       signals: signals([...ci(3), { name: "review", state: "passed" }], trusted),
     });
@@ -228,9 +235,15 @@ describe("review summary", () => {
         policy: policyView(facts({ risk: { value: "logic", final: true, source: "card" } })),
         ...r,
       });
-    const gpt: AiReviewCheck[] = [{ check: "review", model: "gpt", trustConclusion: true }];
-    const claude: AiReviewCheck[] = [{ check: "review", model: "claude", trustConclusion: true }];
-    const untrusted: AiReviewCheck[] = [{ check: "review", model: "gpt", trustConclusion: false }];
+    const gpt: AiReviewCheck[] = [
+      { check: "review", model: "gpt", app: "github-actions", trustConclusion: true },
+    ];
+    const claude: AiReviewCheck[] = [
+      { check: "review", model: "claude", app: "github-actions", trustConclusion: true },
+    ];
+    const untrusted: AiReviewCheck[] = [
+      { check: "review", model: "gpt", app: "github-actions", trustConclusion: false },
+    ];
     const clean = [...ci(4), { name: "review", state: "passed" as const }];
     expect(assess(logic({ signals: signals(clean, gpt) }))).toBe("green");
     expect(renderSummarySection(logic({ signals: signals(clean, gpt) }))).toMatch(
@@ -290,7 +303,9 @@ describe("review summary", () => {
     expect(out).toContain("1. **CI fails** · `unit @octocat`: fix it before merging.");
     expect(out).toContain("**CI:** 1 of 3 failing (`unit @octocat`).");
 
-    const trusted: AiReviewCheck[] = [{ check: "review", model: "gpt", trustConclusion: true }];
+    const trusted: AiReviewCheck[] = [
+      { check: "review", model: "gpt", app: "github-actions", trustConclusion: true },
+    ];
     const issues = input({
       signals: signals([...ci(2), { name: "review", state: "failed" }], trusted),
     });
@@ -415,21 +430,107 @@ describe("review summary", () => {
   });
 });
 
+describe("review summary: what is trusted", () => {
+  const gpt = (over: Partial<AiReviewCheck> = {}): AiReviewCheck[] => [
+    { check: "review", model: "gpt", app: "github-actions", trustConclusion: true, ...over },
+  ];
+  const logic = (r: Partial<SummaryInput>, c: IntentView = card()) =>
+    input({
+      card: {
+        ...c,
+        risk: {
+          ...c.risk,
+          final: "logic",
+          floor: "logic",
+          floorReasons: c.risk.floorReasons.filter((f) => f.rule === "ci_config"),
+        },
+      },
+      policy: policyView(facts({ risk: { value: "logic", final: true, source: "card" } })),
+      ...r,
+    });
+  const clean = [...ci(4), { name: "review", state: "passed" as const }];
+
+  it("U-SUM-9 a review bound to an app ignores a same-named result from anything else", () => {
+    const s = summarizeSignals(
+      HEAD,
+      [
+        { name: "review", state: "passed", app: "evil-app" },
+        { name: "review", state: "passed", app: null },
+        { name: "build", state: "passed", app: "github-actions" },
+      ],
+      gpt({ app: "coderabbitai" }),
+      false,
+    );
+    expect(s.aiReviews).toEqual([]);
+    expect(s.ci.passed).toBe(1);
+  });
+
+  it("U-SUM-10 no app in graft.yaml, or a PR that changes CI: the conclusion is not a verdict", () => {
+    expect(assess(logic({ signals: signals(clean, gpt()) }))).toBe("green");
+    const noApp = logic({ signals: signals(clean, gpt({ app: null })) });
+    expect(assess(noApp)).toBe("yellow");
+    expect(renderSummarySection(noApp)).toContain(
+      "ran (no publishing app is set for it in graft.yaml, so anyone could post it)",
+    );
+    const ciCard = card({
+      risk: {
+        ...card().risk,
+        floorReasons: [
+          { rule: "ci_config", floor: "sensitive", paths: [".github/workflows/r.yml"], count: 1 },
+        ],
+      },
+    });
+    const ciChanged = logic({ signals: signals(clean, gpt()) }, ciCard);
+    expect(assess(ciChanged)).toBe("yellow");
+    expect(renderSummarySection(ciChanged)).toContain(
+      "this pull request changes CI configuration, which could change the review itself",
+    );
+  });
+
+  it("U-SUM-11 the family in the agent name, or a disputed model, is not independent", () => {
+    const claude = gpt({ model: "claude" });
+    expect(
+      assess(
+        logic({
+          signals: signals(clean, claude),
+          author: { kind: "agent", model: "gpt-9", agent: "claude-code" },
+        }),
+      ),
+    ).toBe("yellow");
+    expect(
+      assess(
+        logic({
+          signals: signals(clean, gpt()),
+          author: { kind: "agent", model: "o5", modelDisputed: true },
+        }),
+      ),
+    ).toBe("yellow");
+    expect(
+      assess(
+        logic({
+          signals: signals(clean, gpt()),
+          author: { kind: "agent", model: "claude-opus-5-5", agent: "claude-code" },
+        }),
+      ),
+    ).toBe("green");
+  });
+});
+
 describe("head signals", () => {
   it("U-SIG-1 AI review checks are split from CI; failures and pending win for one name", () => {
     const s = summarizeSignals(
       HEAD,
       [
-        { name: "build", state: "passed" },
-        { name: "lint", state: "failed" },
-        { name: "e2e", state: "pending" },
-        { name: "skipped", state: "other" },
-        { name: "claude-review", state: "passed" },
-        { name: "claude-review", state: "pending" },
+        { name: "build", state: "passed", app: "github-actions" },
+        { name: "lint", state: "failed", app: "github-actions" },
+        { name: "e2e", state: "pending", app: "github-actions" },
+        { name: "skipped", state: "other", app: "github-actions" },
+        { name: "claude-review", state: "passed", app: "github-actions" },
+        { name: "claude-review", state: "pending", app: "github-actions" },
       ],
       [
-        { check: "claude-review", model: "claude", trustConclusion: true },
-        { check: "absent", model: "gpt", trustConclusion: true },
+        { check: "claude-review", model: "claude", app: "github-actions", trustConclusion: true },
+        { check: "absent", model: "gpt", app: "github-actions", trustConclusion: true },
       ],
       false,
     );
@@ -441,7 +542,13 @@ describe("head signals", () => {
       incomplete: false,
     });
     expect(s.aiReviews).toEqual([
-      { check: "claude-review", model: "claude", trustConclusion: true, state: "pending" },
+      {
+        check: "claude-review",
+        model: "claude",
+        app: "github-actions",
+        trustConclusion: true,
+        state: "pending",
+      },
     ]);
   });
 });

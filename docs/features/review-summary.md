@@ -61,13 +61,20 @@ report:
   ai_reviews:
     - check: claude-review      # the check run or status name
       model: claude             # the reviewer's model family
+      app: github-actions       # the GitHub App that publishes the check run
       trust_conclusion: true    # the check fails when the review finds issues
 ```
 
 - `model` is matched against the author's model from provenance (`Graft-Model`). A review whose family appears in it (`claude` in `claude-sonnet-5-5`) is from the same family as the author and is not independent: their blind spots overlap. When the author's model is unknown, independence cannot be shown either. A human author's PR has independent reviews.
+- `app` binds the entry to the GitHub App that publishes the check run (`github-actions` for a workflow job, `coderabbitai`, ...). A check run of the same name from another app, or a commit status of that name, is ignored: it is neither the review nor CI.
 - `trust_conclusion: true` says the check concludes `failure` when the review finds issues, so a `success` means "no issues". Without it (the default), a successful check only means the review ran: most AI review workflows succeed whatever they find, and say so in a comment Graft does not read.
 
-Only a review with `trust_conclusion: true`, a `success` on the current head and an independent model makes a `logic` change "low risk".
+Only a review with `trust_conclusion: true` and `app` set, a `success` on the current head and an independent model makes a `logic` change "low risk". The conclusion is not read as a verdict when:
+
+- the entry has no `app`: anyone who can post a status, or add a workflow job of that name, could post it;
+- the review runs in GitHub Actions and the pull request changes CI configuration: a `pull_request` workflow runs the PR's own version of the workflow, so the PR could change the review.
+
+**Limits.** The author's model and agent come from the author's own `Graft-*` trailers: an agent can declare another model. Graft therefore uses them only to make a review *less* independent (the family is looked for in both the model and the agent name, and commits that disagree on the model make independence unknown), and the summary never changes what the policy requires. A workflow job bound to `github-actions` is still a job that anyone with write access to the default branch can change; bind reviews to a dedicated app when that matters.
 
 ## Human review
 

@@ -2,7 +2,9 @@
  * The CI and AI review results of a pull request head, for the review summary. Read from the API
  * (never from a webhook payload) by the policy job, outside the change lock.
  *
- * Graft's own checks never count. A check named in `report.ai_reviews` is an AI review, not CI.
+ * Graft's own checks never count. A check named in `report.ai_reviews` is an AI review, not CI;
+ * when the entry names an `app`, only a check run of that app is the review, and a result with the
+ * same name from anything else is ignored (a PR's own workflow could otherwise pose as it).
  * When several runs share a name, the latest one per name and app is kept (`filter: "latest"`),
  * which is what GitHub's merge box shows.
  */
@@ -28,8 +30,17 @@ export interface CiSignal {
 export interface AiReviewSignal {
   check: string;
   model: string;
+  /** The app slug that published it; null when the entry names none. */
+  app: string | null;
   trustConclusion: boolean;
   state: SignalState;
+}
+
+/** One result: a check run (with its app's slug) or a commit status (`app` null). */
+export interface SignalResult {
+  name: string;
+  state: SignalState;
+  app: string | null;
 }
 
 export interface HeadSignals {
@@ -84,7 +95,7 @@ export async function readHeadSignals(
     statusesRead: boolean;
   },
 ): Promise<HeadSignals> {
-  const results: { name: string; state: SignalState }[] = [];
+  const results: SignalResult[] = [];
   let incomplete = false;
   for (let page = 1; ; page++) {
     let data: Awaited<ReturnType<GitHubClient["rest"]["checks"]["listForRef"]>>["data"];
@@ -104,7 +115,11 @@ export async function readHeadSignals(
     }
     for (const run of data.check_runs) {
       if (run.app?.id === o.appId || run.head_sha !== o.headSha) continue;
-      results.push({ name: run.name, state: runState(run.status, run.conclusion) });
+      results.push({
+        name: run.name,
+        state: runState(run.status, run.conclusion),
+        app: run.app?.slug ?? null,
+      });
     }
     if (data.check_runs.length < 100 || page * 100 >= data.total_count) break;
     if (page >= RUN_PAGES) {
@@ -125,7 +140,7 @@ export async function readHeadSignals(
       for (const s of data.statuses) {
         if (seen.has(s.context)) continue;
         seen.add(s.context);
-        results.push({ name: s.context, state: statusState(s.state) });
+        results.push({ name: s.context, state: statusState(s.state), app: null });
       }
       if (data.total_count > data.statuses.length) incomplete = true;
     } catch (err) {
@@ -138,7 +153,7 @@ export async function readHeadSignals(
 /** Pure: split results into CI and AI reviews. Exported for tests. */
 export function summarizeSignals(
   headSha: string,
-  results: readonly { name: string; state: SignalState }[],
+  results: readonly SignalResult[],
   aiReviews: readonly AiReviewCheck[],
   incomplete: boolean,
 ): HeadSignals {
@@ -146,7 +161,10 @@ export function summarizeSignals(
   const reviewState = new Map<string, SignalState>();
   const ci: CiSignal = { passed: 0, failed: 0, pending: 0, failing: [], incomplete };
   for (const r of results) {
-    if (reviewByName.has(r.name)) {
+    const review = reviewByName.get(r.name);
+    if (review !== undefined) {
+      // Bound to an app: a same-named result from anything else is neither the review nor CI.
+      if (review.app !== null && r.app !== review.app) continue;
       // Two results with one name (a check run and a status): a failure or a pending run wins.
       const prev = reviewState.get(r.name);
       if (prev === undefined || rank(r.state) > rank(prev)) reviewState.set(r.name, r.state);
@@ -172,7 +190,7 @@ export function summarizeSignals(
 const rank = (s: SignalState): number =>
   s === "failed" ? 3 : s === "pending" ? 2 : s === "passed" ? 1 : 0;
 
-/** A review by the same model family as the author is not independent. */
-export function sameFamily(review: { model: string }, authorModel: string | null): boolean {
-  return authorModel?.toLowerCase().includes(review.model) ?? false;
+/** A review by the same model family as the author's model or agent is not independent. */
+export function sameFamily(review: { model: string }, ...authorNames: (string | null)[]): boolean {
+  return authorNames.some((n) => n?.toLowerCase().includes(review.model) ?? false);
 }

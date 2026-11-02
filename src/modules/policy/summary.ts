@@ -32,7 +32,16 @@ export interface SummaryInput {
   policy: PolicyView;
   /** null when the checks were not read. */
   signals: HeadSignals | null;
-  author: { kind: "agent" | "human" | null; model: string | null };
+  /**
+   * From provenance of this head. `model` and `agent` are what the author declared (trailers), so
+   * they can only make a review less independent; `modelDisputed`: the commits disagree on it.
+   */
+  author: {
+    kind: "agent" | "human" | null;
+    model: string | null;
+    agent?: string | null;
+    modelDisputed?: boolean;
+  };
 }
 
 export type Level = "pending" | "red" | "orange" | "yellow" | "green";
@@ -65,16 +74,32 @@ function riskOf(i: SummaryInput): "trivial" | "logic" | "sensitive" | null {
   return i.policy.verdict?.effectiveRisk.value ?? cardForHead(i)?.risk.final ?? null;
 }
 
-/** An AI review that ran on this head, says "no issues" and was not written by the author's kind. */
+/**
+ * Whether a review is by another model family than the author: null when it cannot be shown (no
+ * declared model, or commits that disagree on it). The family is also looked for in the agent name.
+ */
 function independent(r: AiReviewSignal, author: SummaryInput["author"]): boolean | null {
   if (author.kind === "human") return true;
-  if (author.model === null) return null;
-  return !sameFamily(r, author.model);
+  if (author.model === null || author.modelDisputed === true) return null;
+  return !sameFamily(r, author.model, author.agent ?? null);
+}
+
+/** Why a review's conclusion is not read as its verdict; null when it is. */
+function distrust(r: AiReviewSignal, card: IntentView | null): string | null {
+  if (!r.trustConclusion) return "its check does not say whether it found issues";
+  if (r.app === null)
+    return "no publishing app is set for it in graft.yaml, so anyone could post it";
+  // A PR that changes CI could change the workflow that runs the review.
+  if (r.app === "github-actions" && card?.risk.floorReasons.some((f) => f.rule === "ci_config")) {
+    return "this pull request changes CI configuration, which could change the review itself";
+  }
+  return null;
 }
 
 function cleanIndependentReview(i: SummaryInput): boolean {
+  const card = cardForHead(i);
   return (i.signals?.aiReviews ?? []).some(
-    (r) => r.trustConclusion && r.state === "passed" && independent(r, i.author) === true,
+    (r) => distrust(r, card) === null && r.state === "passed" && independent(r, i.author) === true,
   );
 }
 
@@ -157,8 +182,9 @@ function ciText(s: HeadSignals): string {
 
 function reviewText(r: AiReviewSignal, i: SummaryInput): string {
   let state: string;
+  const why = distrust(r, cardForHead(i));
   if (r.state === "pending") state = "still running";
-  else if (r.trustConclusion) {
+  else if (why === null) {
     state =
       r.state === "passed"
         ? "no issues"
@@ -166,8 +192,7 @@ function reviewText(r: AiReviewSignal, i: SummaryInput): string {
           ? "found issues"
           : "finished without a verdict";
   } else {
-    state =
-      r.state === "failed" ? "failed" : "ran (its check does not say whether it found issues)";
+    state = r.state === "failed" ? "failed" : `ran (${why})`;
   }
   const ind = independent(r, i.author);
   const note =
@@ -329,7 +354,7 @@ function points(i: SummaryInput): string[] {
   for (const r of s?.aiReviews ?? []) {
     if (r.state === "failed") {
       out.push(
-        r.trustConclusion
+        distrust(r, card) === null
           ? `**AI review found issues** · ${codeSpan(r.check, 80)}: read its comments.`
           : `**AI review failed** · ${codeSpan(r.check, 80)}: see its check run.`,
       );
