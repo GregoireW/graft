@@ -3,10 +3,12 @@ import type { JobDefinition } from "../../queue/job.js";
 import type { WebhookHandler } from "../../webhooks/handler.js";
 import {
   basePushPolicy,
+  checksPolicy,
   onChangeSignal,
   rerequestPolicy,
   reviewPolicy,
   schedulePolicy,
+  statusPolicy,
 } from "./handlers.js";
 import { policyEvaluateJob, policyFanoutJob } from "./job.js";
 import { scheduleTeamFanout, teamFanoutJob } from "./team-fanout.js";
@@ -15,6 +17,8 @@ export const webhookHandlers: WebhookHandler[] = [
   schedulePolicy,
   reviewPolicy,
   rerequestPolicy,
+  checksPolicy,
+  statusPolicy,
   basePushPolicy,
   scheduleTeamFanout,
 ];

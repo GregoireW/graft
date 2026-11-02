@@ -88,8 +88,9 @@ export function prObs(over: Partial<PrObs> = {}): FullPr {
       markerComments: 1,
       id: 500,
       updatedAt: "2026-10-15T10:00:05.000Z",
-      sections: ["intent", "provenance", "policy"],
+      sections: ["summary", "intent", "provenance", "policy"],
       markerCounts: {
+        summary: { start: 1, end: 1 },
         intent: { start: 1, end: 1 },
         provenance: { start: 1, end: 1 },
         policy: { start: 1, end: 1 },

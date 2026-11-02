@@ -64,6 +64,8 @@ describe("generateCard", () => {
       goal: "Retry failed deliveries.",
       behaviorChanges: ["Deliveries are retried.", "Failures are logged."],
       outOfScopeEdits: [],
+      requested: [],
+      intentMatch: null,
     });
     expect(r.verifier.claims.map((c) => [c.id, c.kind])).toEqual([
       ["goal", "goal"],
@@ -576,11 +578,11 @@ describe("prompt injection", () => {
       { ...r, id: "3f2a9c1d-0000-4000-8000-000000000000", headSha: "a".repeat(40) },
       { retryScheduled: false },
     );
-    const line = section.split("\n").find((l) => l.startsWith("- ``")) ?? "";
+    const line = section.split("\n").find((l) => l.startsWith("- ➕ Out of scope: ``")) ?? "";
     expect(line).not.toBe("");
     // The mention is inside a code span (inert); the prose after it has none.
     const [span, prose] = line.split("``: ");
-    expect(span).toMatch(/^- `` .* $/);
+    expect(span).toMatch(/^- ➕ Out of scope: `` .* $/);
     expect(prose).not.toMatch(/@[A-Za-z0-9]/);
     expect(section).not.toContain("<!--");
   });

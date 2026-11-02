@@ -57,7 +57,12 @@ export function evaluateS01(o: S01Obs, env: EvalEnv): AssertionResult[] {
         reasons: card?.floorReasons.length,
       },
     ),
-    eq("system", "s01.sections", ["intent", "provenance", "policy"], pr.comment.sections),
+    eq(
+      "system",
+      "s01.sections",
+      ["summary", "intent", "provenance", "policy"],
+      pr.comment.sections,
+    ),
     ...oneComment("s01", pr),
     threeNeutral("s01.neutral", pr),
     eq(

@@ -6,6 +6,9 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 
 ### Added
 
+- A **review summary** at the top of the Graft comment: does the change match the intent, is it safe to merge (risk, CI, AI reviews, how much Graft read), what human review the policy asks for, and up to three points for the reviewer to look at. Graft never calls a `sensitive` change safe, and a `logic` one only "low risk" with CI green and an independent AI review that reports no issues. It updates when CI or an AI review finishes on the head. [Review summary](docs/features/review-summary.md)
+- `report.ai_reviews` in `graft.yaml`: the AI review checks the summary reads, with the reviewer's model family and whether a successful check means "no issues". [graft.yaml](docs/graft-yaml.md)
+- Intent cards compare what was asked (the linked issue, else the description) with what the diff does, item by item; the verifier checks every item marked done (`intent-v6`, migration `0017`). [Intent cards](docs/features/intent-cards.md)
 - `GRAFT_ALLOWED_ACCOUNTS`: the users and organizations Graft serves. A delivery from any other account is answered `202 ignored` and never stored or enqueued, so one App can be made public and installed on several accounts without serving strangers. `GRAFT_UNINSTALL_UNLISTED=on` also removes the App from an unlisted account when it installs it. Unset, nothing changes. [More than one account](docs/github-app.md#more-than-one-account)
 - A guide to [choosing a model provider](docs/model-providers.md): which provider fits which need, step-by-step setup for the Claude API, gateways, OpenAI-compatible and local models, the CLI providers and Copilot, checking a model with `pnpm eval --live`, deploying a registry, and the startup and card errors. `.env.example` and `compose.coolify.yaml` now show the registry variables.
 - The `copilot` provider kind (dormant until configured): calls billed to the installing organization's Copilot through an installation token limited to `copilot_requests: write`, only for installations listed as opted in, with a fallback model for the rest. Empty sessions: no tools, no MCP, a replaced system message. Needs `@github/copilot-sdk` in the image and the Copilot requests permission on the App. [Copilot provider](docs/configuration.md#copilot-provider)
@@ -20,6 +23,7 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 
 ### Changed
 
+- The Graft comment is shorter: under the summary, the intent card shows its goal and folds the rest, and the provenance and policy sections are folded. The `graft/intent` and `graft/policy` check runs keep the full text.
 - Behavior changes the verifier finds that the card leaves out are listed under **Also changed** and no longer count as a disagreement (`intent-v5`). The "verifier disagrees" warning and its `logic` floor are kept for claims the diff does not show or contradicts. [Intent cards](docs/features/intent-cards.md)
 - Lower model cost per card (`intent-v4`): the writer and the verifier share one system prompt and a cached start of the user message holding the diff, so the verifier reads the diff from the prompt cache instead of paying for it again.
 

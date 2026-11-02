@@ -17,6 +17,15 @@
         "value": "noto sans",
         "createdAt": "2026-10-16T06:54:47.218Z",
         "reason": "Claude: .gh mock of GitHub's PR comment uses GitHub's system font stack on purpose for fidelity"
+      },
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "test/unit/policy-summary.test.ts"
+        ],
+        "createdAt": "2026-11-02T19:18:10.416Z",
+        "reason": "Claude: hostile-input fixture in an escaping test, not rendered UI"
       }
     ]
   }

@@ -30,6 +30,11 @@ function okView(over: Partial<IntentView> = {}): IntentView {
       outOfScopeEdits: [
         { path: "README.md", reason: "Rewords the installation section, unrelated to retries." },
       ],
+      requested: [
+        { item: "Retry failed deliveries with exponential backoff.", status: "done" },
+        { item: "Alert the operator after repeated failures.", status: "deferred" },
+      ],
+      intentMatch: "matches",
     },
     risk: {
       final: "sensitive",
@@ -90,24 +95,23 @@ function okView(over: Partial<IntentView> = {}): IntentView {
   };
 }
 
-const EXPECTED_CARD = `### Intent
+const EXPECTED_CARD = `**Goal:** Retry failed webhook deliveries up to 5 times with exponential backoff.
 
-**Goal:** Retry failed webhook deliveries up to 5 times with exponential backoff.
+<details><summary>What was asked vs what was done</summary>
 
-**Risk:** \`sensitive\` · rules \`sensitive\` · writer \`logic\` · verifier \`logic\`
+- ✅ Retry failed deliveries with exponential backoff.
+- ⏭️ Alert the operator after repeated failures. (left for later)
+- ➕ Also changed, found by the verifier: Retries now also run for 4xx responses, not only 5xx.
+- ➕ Out of scope: \`README.md\`: Rewords the installation section, unrelated to retries.
 
-**Behavior changes**
+</details>
+
+<details><summary>Behavior changes (2)</summary>
 
 - Failed deliveries are retried up to 5 times, waiting 1, 2, 4, 8 and 16 seconds.
 - A delivery that still fails after 5 retries is marked failed and logged at error level.
 
-**Also changed** · found by the verifier, not listed above
-
-- Retries now also run for 4xx responses, not only 5xx.
-
-**Out-of-scope edits**
-
-- \`README.md\`: Rewords the installation section, unrelated to retries.
+</details>
 
 > [!WARNING]
 > **The verifier disagrees with this card.** Read the diff instead of relying on the card.
@@ -116,6 +120,7 @@ const EXPECTED_CARD = `### Intent
 
 <details><summary>How this card was made</summary>
 
+- **Risk:** \`sensitive\` · rules \`sensitive\` · writer \`logic\` · verifier \`logic\`
 - Rules set the floor to \`sensitive\`: dependency manifest or lockfile (\`package.json\`, \`pnpm-lock.yaml\`)
 - Writer \`claude-sonnet-5-5\`; verifier \`claude-sonnet-5-5\` supported 3 of 4 claims
 - Inputs: PR title and description, issue #42, 3 of 4 files in full, 1 omitted (\`pnpm-lock.yaml\`: lockfile)
@@ -196,22 +201,66 @@ describe("intent rendering", () => {
   });
 
   it("U-IREN-5 empty out-of-scope lists, and verifier-only entries", () => {
-    const none = okView({ card: { goal: "g.", behaviorChanges: ["b."], outOfScopeEdits: [] } });
-    expect(renderIntentSection(none, no)).toContain("**Out-of-scope edits:** none");
-    expect(renderIntentSection(none, no)).not.toContain("**Out-of-scope edits**\n");
+    const empty = { goal: "g.", behaviorChanges: ["b."], outOfScopeEdits: [], requested: [] };
+    const none = okView({ card: { ...empty, intentMatch: null } });
+    expect(renderIntentSection(none, no)).not.toContain("Out of scope");
+    expect(renderIntentSection(none, no)).toContain("<details><summary>Also changed (1)</summary>");
     const flagged = okView({
-      card: { goal: "g.", behaviorChanges: ["b."], outOfScopeEdits: [] },
-      verifier: { ...okView().verifier, unexplained: ["docs/x.md"] },
+      card: { ...empty, intentMatch: null },
+      verifier: { ...okView().verifier, missing: [], unexplained: ["docs/x.md"] },
     });
     expect(renderIntentSection(flagged, no)).toContain(
-      "**Out-of-scope edits**\n\n- `docs/x.md`: flagged by the verifier",
+      "<details><summary>Also changed (1)</summary>\n\n- ➕ Out of scope: `docs/x.md`: flagged by the verifier",
+    );
+    // Nothing asked, nothing extra: no fold at all.
+    const bare = okView({
+      card: { ...empty, intentMatch: null },
+      verifier: { ...okView().verifier, missing: [], unexplained: [] },
+    });
+    expect(renderIntentSection(bare, no)).not.toContain("What was asked");
+    expect(renderIntentSection(bare, no)).not.toContain("Also changed");
+    // No stated intent says so.
+    const unknown = okView({ card: { ...empty, intentMatch: "unknown" } });
+    expect(renderIntentSection(unknown, no)).toContain(
+      "<details><summary>What was asked vs what was done</summary>\n\nNeither a linked issue nor the description says what was wanted.",
     );
   });
 
-  it("U-IREN-6 the unavailable section, with and without a retry, for every failure reason", () => {
-    const expected = (text: string, tail: string) => `### Intent
+  it("U-IREN-5b requested items: every status, and a done item the verifier does not find", () => {
+    const v = okView({
+      card: {
+        ...(okView().card as NonNullable<IntentView["card"]>),
+        outOfScopeEdits: [],
+        requested: [
+          { item: "Upload GPX files.", status: "done" },
+          { item: "Upload FIT files.", status: "partial" },
+          { item: "Upload @octocat <b>photos</b>.", status: "missing" },
+          { item: "Telegram.", status: "deferred" },
+        ],
+        intentMatch: "partial",
+      },
+      verifier: {
+        ...okView().verifier,
+        missing: [],
+        claims: [
+          { id: "r1", kind: "requested", verdict: "unsupported", reason: "Not in the diff." },
+        ],
+      },
+    });
+    const out = renderIntentSection(v, no);
+    expect(out).toContain(
+      [
+        "- ✅ Upload GPX files. · ⚠️ the verifier does not find it in the diff",
+        "- 🟡 Upload FIT files. (partly done)",
+        "- ❌ Upload @\u2060octocat \\<b\\>photos\\</b\\>. (not done)",
+        "- ⏭️ Telegram. (left for later)",
+      ].join("\n"),
+    );
+    expect(out).toContain("- Requested item 1 is unsupported: Not in the diff.");
+  });
 
-**Card unavailable:** ${text}
+  it("U-IREN-6 the unavailable section, with and without a retry, for every failure reason", () => {
+    const expected = (text: string, tail: string) => `**Intent card unavailable:** ${text}
 
 **Risk:** \`logic\` · rules \`trivial\` · no model check
 
@@ -233,7 +282,7 @@ ${tail}`;
     );
     for (const [reason, text] of Object.entries(FAILURE_TEXT)) {
       expect(renderIntentSection(unavailableView(reason as FailureReason), no)).toContain(
-        `**Card unavailable:** ${text}`,
+        `**Intent card unavailable:** ${text}`,
       );
     }
     expect(Object.keys(FAILURE_TEXT)).toHaveLength(11);
@@ -241,7 +290,7 @@ ${tail}`;
 
   it("U-IREN-7 the pending section", () => {
     expect(renderPendingSection({ headSha: HEAD_SHA, previousHeadSha: "0".repeat(40) })).toBe(
-      "### Intent\n\nWriting the card for head `ec26c3e`. The previous card (head `0000000`) no longer matches this pull request.",
+      "Writing the intent card for head `ec26c3e`. The previous card (head `0000000`) no longer matches this pull request.",
     );
   });
 
@@ -314,15 +363,17 @@ ${tail}`;
         goal: "g.",
         behaviorChanges: Array(10).fill("b".repeat(200)),
         outOfScopeEdits: edits,
+        requested: [],
+        intentMatch: null,
       },
       verifier: { ...base.verifier, claims, unexplained, missing: Array(5).fill("m".repeat(200)) },
     });
     const out = renderIntentSection(big, no);
     expect(out.length).toBeLessThanOrEqual(18_000);
-    expect(out).not.toContain("<details>");
+    expect(out).not.toContain("How this card was made");
     expect(out).toMatch(/- …and \d+ more/);
     // A normal card keeps its details.
-    expect(renderIntentSection(okView(), no)).toContain("<details>");
+    expect(renderIntentSection(okView(), no)).toContain("How this card was made");
   });
 
   it("U-IREN-10 deterministic, no dates, floor-reason formatting for path, size and plain rules", () => {
@@ -396,12 +447,9 @@ ${tail}`;
     expect(out).not.toContain("[!WARNING]");
     expect(out).toContain(
       [
-        "**Also changed** · found by the verifier, not listed above",
-        "",
-        "- Retries now also run for 4xx responses, not only 5xx.",
-        "- Adds a metric.",
-        "",
-        "**Out-of-scope edits**",
+        "- ➕ Also changed, found by the verifier: Retries now also run for 4xx responses, not only 5xx.",
+        "- ➕ Also changed, found by the verifier: Adds a metric.",
+        "- ➕ Out of scope: `README.md`: Rewords the installation section, unrelated to retries.",
       ].join("\n"),
     );
     expect(renderIntentCheckOutput(agree, no).title).toBe(

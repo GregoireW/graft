@@ -28,7 +28,7 @@ export function scenarioCommits() {
   ];
 }
 
-export const EXPECTED_SECTION = `### Provenance
+export const EXPECTED_SECTION = `<details><summary>Provenance: written by an agent (Graft trailers)</summary>
 
 | | |
 | --- | --- |
@@ -41,7 +41,7 @@ export const EXPECTED_SECTION = `### Provenance
 
 Head \`ec26c3e\` · 3 commits, 2 with Graft trailers.
 
-<details><summary>1 provenance warning</summary>
+**1 provenance warning**
 
 - \`ab12cd3\`: Graft-Session ignored (invalid_session_url)
 

@@ -1551,6 +1551,42 @@ describe("graft.yaml report key", () => {
     "minimal.yaml": "2eb972bc224ae0b92fddeb0637a3e45cc994530571651360f8b100fa96608ebf",
   };
 
+  it("U-PRL-2 report.ai_reviews parses, dedupes by check and rejects bad entries", () => {
+    const codes = (yaml: string) => codesOf(`version: 1\n${yaml}`);
+    const res = parse(
+      [
+        "version: 1",
+        "report:",
+        "  ai_reviews:",
+        "    - check: claude-review",
+        "      model: claude",
+        "      trust_conclusion: true",
+        "    - check: CodeRabbit",
+        "      model: coderabbit",
+        "    - check: claude-review",
+        "      model: gpt",
+        "",
+      ].join("\n"),
+    );
+    if (!res.ok) throw new Error(JSON.stringify(res.errors));
+    expect(res.policy.report).toEqual({
+      aiReviews: [
+        { check: "claude-review", model: "claude", trustConclusion: true },
+        { check: "CodeRabbit", model: "coderabbit", trustConclusion: false },
+      ],
+    });
+    expect(codes("report: { ai_reviews: [] }\n")).toEqual(["wrong_type"]);
+    expect(codes("report: { ai_reviews: [{ check: x }] }\n")).toEqual(["wrong_type"]);
+    expect(codes("report: { ai_reviews: [{ check: x, model: Claude }] }\n")).toEqual([
+      "wrong_type",
+    ]);
+    expect(
+      codes("report: { ai_reviews: [{ check: x, model: y, trust_conclusion: yes }] }\n"),
+    ).toEqual(["wrong_type"]);
+    const many = Array.from({ length: 11 }, (_, i) => `{ check: c${i}, model: m }`).join(", ");
+    expect(codes(`report: { ai_reviews: [${many}] }\n`)).toEqual(["too_many_items"]);
+  });
+
   it("U-PRL-1 report.language parses; a bad tag, a list and an unknown key are errors; a file without it keeps its hash", () => {
     const codes = (yaml: string) => codesOf(`version: 1\n${yaml}`);
     const res = parse("version: 1\nreport:\n  language: fr\n");

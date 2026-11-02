@@ -41,7 +41,8 @@ describe("provenance rendering", () => {
     expect(text).toContain(
       "Head `ec26c3e` · no `Graft-*` trailers found. Agents can declare provenance with `Graft-Agent`, `Graft-Model`, `Graft-Task` and `Graft-Session` git trailers.",
     );
-    expect(text).not.toContain("<details>");
+    expect(text).not.toContain("provenance warning");
+    expect(text).toContain("<summary>Provenance: written by a human</summary>");
   });
 
   it("U-REN-3 the truncated footer sentence, and singular 'commit'", () => {
@@ -60,14 +61,14 @@ describe("provenance rendering", () => {
   it("U-REN-4 warnings: singular and plural summaries; more than 10 lists ten and '…and K more'", () => {
     const bad = (n: number) => commit(n, [["Graft-Agent", "`x`"]]);
     const one = renderProvenanceSection(run({ commits: [bad(1)] }), opts);
-    expect(one).toContain("<summary>1 provenance warning</summary>");
+    expect(one).toContain("**1 provenance warning**");
     expect(one).toContain("- `0000000`: Graft-Agent ignored (invalid_value)");
 
     const many = renderProvenanceSection(
       run({ commits: Array.from({ length: 13 }, (_, i) => bad(i + 1)) }),
       opts,
     );
-    expect(many).toContain("<summary>13 provenance warnings</summary>");
+    expect(many).toContain("**13 provenance warnings**");
     expect(many.match(/^- `/gm)).toHaveLength(10);
     expect(many).toContain("- …and 3 more");
 
