@@ -4,6 +4,12 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 
 ## Unreleased
 
+## v0.2.0 (2026-11-02): Review summary, any model provider, operator console
+
+Graft can run on models other than the Claude API, an optional console shows what it handled, and the PR comment now opens with a verdict a reviewer can act on. Report mode stays the default.
+
+**Upgrading.** Run `pnpm db:migrate` (migration `0017` adds two columns to `intent_cards`). Intent cards move from `intent-v2` to `intent-v6`: an open PR keeps its card until Graft writes a new one (on a push, or a re-run of the `graft/intent` check). Each open PR's comment and `graft/policy` check run are republished once with the new layout. The App needs no new permission or event.
+
 ### Added
 
 - A **review summary** at the top of the Graft comment: does the change match the intent, is it safe to merge (risk, CI, AI reviews, how much Graft read), what human review the policy asks for, and up to three points for the reviewer to look at. Graft never calls a `sensitive` change safe, and a `logic` one only "low risk" with CI green and an independent AI review that reports no issues. It updates when CI or an AI review finishes on the head. [Review summary](docs/features/review-summary.md)
