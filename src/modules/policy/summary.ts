@@ -308,9 +308,11 @@ function humanRow(v: PolicyView): string {
     return `✅ **Required approvals present** (${counted} of ${verdict.humans})${report}`;
   }
   const teams = verdict.constraints
-    .flatMap((c) => c.teams)
-    .map((t) => codeSpan(`@${v.owner}/${t}`));
-  const from = teams.length > 0 ? ` from ${teams.join(" or ")}` : "";
+    .filter((c) => c.teams.length > 0)
+    .map(
+      (c) => `${c.humans} from ${c.teams.map((t) => codeSpan(`@${v.owner}/${t}`)).join(" or ")}`,
+    );
+  const from = teams.length > 0 ? ` (${teams.join("; ")})` : "";
   const requested = v.approvers?.changesRequestedBy ?? [];
   const changes =
     requested.length > 0

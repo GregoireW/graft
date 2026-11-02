@@ -203,6 +203,7 @@ const event = (name: string, payload: unknown) =>
 describe("guard: schema", () => {
   it("I-GRD-1 migration 0011 up, down, up; down restores the old status check and fails on a new status", async () => {
     // Step 3 review 1's migration and step 5's sit on top of 0011.
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
     expect(await migrateDownOne(t.db)).toEqual(["0014_mcp"]);
@@ -232,11 +233,13 @@ describe("guard: schema", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     // A row with a new status blocks the rollback.
     await sql`insert into guard_events (repository_id, branch, failing_sha, status)
       values (${REPO_ID}, 'main', ${C(1)}, 'flaky')`.execute(t.db);
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
     expect(await migrateDownOne(t.db)).toEqual(["0014_mcp"]);
@@ -251,9 +254,11 @@ describe("guard: schema", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     await t.db.deleteFrom("guard_events").execute();
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
     expect(await migrateDownOne(t.db)).toEqual(["0014_mcp"]);
@@ -267,6 +272,7 @@ describe("guard: schema", () => {
       "0014_mcp",
       "0015_mcp_open_claims",
       "0016_phase1_gate",
+      "0017_intent_requested",
     ]);
     const def = await sql<{ def: string }>`
       select pg_get_constraintdef(oid) as def from pg_constraint

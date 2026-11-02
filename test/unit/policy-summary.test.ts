@@ -413,7 +413,7 @@ describe("review summary", () => {
     const tv = input({
       policy: { ...policyView(f), policy: team.policy, verdict: evaluatePolicy(team.policy, f) },
     });
-    expect(renderSummarySection(tv)).toContain("**1 approval needed** from `@acme/security`");
+    expect(renderSummarySection(tv)).toContain("**1 approval needed** (1 from `@acme/security`)");
     expect(renderSummarySection(tv)).not.toMatch(/(^|[^`])@acme/);
   });
 

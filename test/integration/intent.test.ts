@@ -306,13 +306,14 @@ describe("intent.generate job", () => {
     // One comment holding both sections, in the managed order.
     expect(api.state.comments).toHaveLength(1);
     const body = api.state.comments[0]?.body ?? "";
-    expect(body.indexOf("### Intent")).toBeGreaterThan(0);
-    expect(body.indexOf("### Intent")).toBeLessThan(body.indexOf("### Provenance"));
+    const at = (n: string) => body.indexOf(`<!-- graft:section:${n}:start -->`);
+    expect(at("intent")).toBeGreaterThan(0);
+    expect(at("intent")).toBeLessThan(at("provenance"));
     const view = rowToView(card as never);
     const section = renderIntentSection(view, { retryScheduled: false });
     const sections = parseManagedComment(body);
     expect(sections?.get("intent")).toBe(section);
-    expect(sections?.get("provenance")).toContain("### Provenance");
+    expect(sections?.get("provenance")).toContain("<summary>Provenance:");
 
     // Each module's write keeps the other's section byte for byte.
     const before = new Map(sections);
@@ -418,9 +419,9 @@ describe("intent.generate job", () => {
       .slice(reqs)
       .filter((r) => r.method === "PATCH" && /issues\/comments/.test(r.path));
     expect(patches).toHaveLength(2);
-    expect(String(patches[0]?.body?.body)).toContain("Writing the card for head `bbbbbbb`");
+    expect(String(patches[0]?.body?.body)).toContain("Writing the intent card for head `bbbbbbb`");
     expect(String(patches[0]?.body?.body)).toContain("(head `ec26c3e`)");
-    expect(String(patches[1]?.body?.body)).not.toContain("Writing the card for head");
+    expect(String(patches[1]?.body?.body)).not.toContain("Writing the intent card for head");
     expect(String(patches[1]?.body?.body)).toContain("**Goal:**");
 
     expect(api.state.checkRuns.map((r) => r.head_sha)).toEqual([HEAD_SHA, headB]);
@@ -586,7 +587,7 @@ describe("intent.generate job", () => {
       verifier_status: "skipped",
     });
     const body = api.state.comments[0]?.body ?? "";
-    expect(body).toContain("**Card unavailable:** the model service is unavailable.");
+    expect(body).toContain("**Intent card unavailable:** the model service is unavailable.");
     expect(body).toContain("Graft retries automatically.");
     const run = api.state.checkRuns[0];
     expect(run?.output.title).toBe("Card unavailable · risk: sensitive");

@@ -103,6 +103,7 @@ describe("modes: schema", () => {
   it("I-MODE-1 migration 0008 down removes exactly what it added, then up restores it", async () => {
     await truncateAll(t.db);
     // Steps 2 to 5's migrations (and step 3 review 1's) sit on top of 0008.
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
     expect(await migrateDownOne(t.db)).toEqual(["0014_mcp"]);
@@ -132,6 +133,7 @@ describe("modes: schema", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     await seedWorld(t.db);

@@ -95,6 +95,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
       const again = await tableNames(db);
@@ -594,6 +595,9 @@ describe("database", () => {
     );
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -651,6 +655,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     expect(await tableNames(db)).toContain("change_provenance");
@@ -662,6 +667,9 @@ describe("database", () => {
   it("I-DB-8 0003 down then up: down restores the 0001 intent_cards and drops intent_feedback", async () => {
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -719,6 +727,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     expect(await tableNames(db)).toContain("intent_feedback");
@@ -769,6 +778,9 @@ describe("database", () => {
       );
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -847,6 +859,9 @@ describe("database", () => {
 
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -903,6 +918,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     expect(await policyColumns()).toEqual(upColumns);
@@ -930,6 +946,9 @@ describe("database", () => {
     for (const t of stepSix) expect(await tableNames(db), t).toContain(t);
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -970,6 +989,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     for (const t of stepSix) expect(await tableNames(db), t).toContain(t);
@@ -1007,6 +1027,9 @@ describe("database", () => {
       .executeTakeFirstOrThrow();
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0017_intent_requested",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0015_mcp_open_claims",
@@ -1042,6 +1065,7 @@ describe("database", () => {
         "0014_mcp",
         "0015_mcp_open_claims",
         "0016_phase1_gate",
+        "0017_intent_requested",
       ]);
     }
     const rows = await sql<{ user_id: number; verified: boolean }>`

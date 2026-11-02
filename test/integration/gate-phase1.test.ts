@@ -578,11 +578,12 @@ describe("the Phase 1 gate (Phase 1 step 7)", () => {
           where conname = 'review_time_runs_period_check'`.execute(t.db)
       ).rows[0]?.def;
     expect(await check()).toContain("phase1");
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     try {
       expect(await check()).not.toContain("phase1");
     } finally {
-      expect(await migrateToLatest(t.db)).toEqual(["0016_phase1_gate"]);
+      expect(await migrateToLatest(t.db)).toEqual(["0016_phase1_gate", "0017_intent_requested"]);
     }
     // The baseline extractor stores a phase1 run.
     await seedWorld(t.db);
@@ -608,7 +609,12 @@ describe("the Phase 1 gate (Phase 1 step 7)", () => {
     expect(
       (await t.db.selectFrom("review_time_runs").select("period").execute()).map((x) => x.period),
     ).toEqual(["phase1"]);
-    await expect(migrateDownOne(t.db)).rejects.toThrow(/phase1 review time runs exist/);
+    expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
+    try {
+      await expect(migrateDownOne(t.db)).rejects.toThrow(/phase1 review time runs exist/);
+    } finally {
+      expect(await migrateToLatest(t.db)).toEqual(["0017_intent_requested"]);
+    }
     expect(await check()).toContain("phase1");
     // Step 7 review 1 (X37): the refusal keeps the measured data.
     expect(await t.db.selectFrom("review_time_runs").select("period").execute()).toEqual([
