@@ -82,8 +82,9 @@ export async function inspectRole(db: Db): Promise<ReadOnlyReport> {
            (select rolsuper or rolbypassrls from pg_roles where rolname = current_user) as superuser,
            (select bool_or(has_table_privilege(current_user, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE'))
               from pg_class c join pg_namespace n on n.oid = c.relnamespace
-             where n.nspname in ('public', 'pgboss') and c.relkind in ('r', 'p')) as writes,
-           has_table_privilege(current_user, 'public.changes', 'SELECT') as can_read,
+             where (n.nspname = any(current_schemas(false)) or n.nspname = 'pgboss')
+               and c.relkind in ('r', 'p')) as writes,
+           has_table_privilege(current_user, 'changes', 'SELECT') as can_read,
            (to_regclass('pgboss.job') is not null
               and has_schema_privilege(current_user, 'pgboss', 'USAGE')
               and has_table_privilege(current_user, 'pgboss.job', 'SELECT')) as pgboss
@@ -105,8 +106,10 @@ export async function verifyReadOnly(db: Db, requireRole: boolean): Promise<Read
   try {
     report = await inspectRole(db);
   } catch (err) {
-    if (err instanceof Error && /relation "public\.changes" does not exist/.test(err.message)) {
-      throw new ReadOnlyError("Graft's tables are missing: run Graft's migrations first");
+    if (err instanceof Error && /relation "changes" does not exist/.test(err.message)) {
+      throw new ReadOnlyError(
+        "Graft's tables are missing from the search_path: check the connection's search_path and run Graft's migrations",
+      );
     }
     throw err;
   }

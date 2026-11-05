@@ -389,6 +389,55 @@ describe("system", () => {
 });
 
 describe("read-only", () => {
+  it.each(["read-only", "writable", "unreadable", "missing"] as const)(
+    "checks a custom search_path with %s tables",
+    async (access) => {
+      const schema = `console_schema_${process.pid}`;
+      const role = `console_schema_role_${process.pid}`;
+      await sql.raw(`CREATE SCHEMA ${schema}`).execute(writer);
+      await sql
+        .raw(`CREATE ROLE ${role} LOGIN PASSWORD 'pw' NOSUPERUSER NOBYPASSRLS`)
+        .execute(writer);
+      const url = new URL(CONSOLE_TEST_DATABASE_URL);
+      url.username = role;
+      url.password = "pw";
+      const ro = createReadOnlyDb(url.toString(), { statementTimeoutMs: 5000, max: 1 });
+      try {
+        await sql.raw(`GRANT USAGE ON SCHEMA ${schema} TO ${role}`).execute(writer);
+        if (access !== "missing") {
+          await sql.raw(`CREATE TABLE ${schema}.changes (id integer)`).execute(writer);
+          if (access !== "unreadable") {
+            await sql.raw(`GRANT SELECT ON ${schema}.changes TO ${role}`).execute(writer);
+          }
+          if (access === "writable") {
+            await sql.raw(`CREATE TABLE ${schema}.other (id integer)`).execute(writer);
+            await sql.raw(`GRANT INSERT ON ${schema}.other TO ${role}`).execute(writer);
+          }
+        }
+        await sql.raw(`SET search_path TO ${schema}`).execute(ro);
+        if (access === "read-only") {
+          await expect(verifyReadOnly(ro, true)).resolves.toMatchObject({
+            role,
+            transactionReadOnly: true,
+            roleReadOnly: true,
+            canRead: true,
+          });
+        } else {
+          const message = {
+            writable: /can write to Graft's tables/,
+            unreadable: /cannot read Graft's tables/,
+            missing: /tables are missing from the search_path/,
+          }[access];
+          await expect(verifyReadOnly(ro, true)).rejects.toThrow(message);
+        }
+      } finally {
+        await ro.destroy();
+        await sql.raw(`DROP SCHEMA ${schema} CASCADE`).execute(writer);
+        await sql.raw(`DROP ROLE ${role}`).execute(writer);
+      }
+    },
+  );
+
   it("cannot write through the console's connection", async () => {
     await expect(
       sql`insert into service_state (key, value, updated_at) values ('x', 'y', now())`.execute(

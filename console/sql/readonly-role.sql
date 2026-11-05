@@ -22,10 +22,12 @@ ALTER ROLE graft_console SET statement_timeout = '10s';
 
 GRANT CONNECT ON DATABASE :"DBNAME" TO graft_console;
 
-GRANT USAGE ON SCHEMA public TO graft_console;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO graft_console;
+SELECT current_schema() AS app_schema \gset
+ALTER ROLE graft_console IN DATABASE :"DBNAME" SET search_path TO :"app_schema";
+GRANT USAGE ON SCHEMA :"app_schema" TO graft_console;
+GRANT SELECT ON ALL TABLES IN SCHEMA :"app_schema" TO graft_console;
 -- Tables Graft's later migrations create, when the migrating role is the one running this script.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO graft_console;
+ALTER DEFAULT PRIVILEGES IN SCHEMA :"app_schema" GRANT SELECT ON TABLES TO graft_console;
 
 -- The job queue (pg-boss) lives in its own schema, created when Graft's worker first starts. The
 -- console reads job counts from it; without these grants the System view says jobs are unavailable.
