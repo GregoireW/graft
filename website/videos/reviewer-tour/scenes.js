@@ -3,7 +3,7 @@
  * The frame is the herbarium sheet of the landing page (DESIGN.md): mounting-board ground, iron-gall ink, one cambium
  * green, IM Fell for display, Literata for argument, Courier Prime for labels. The pull request itself sits on a
  * GitHub-like surface, and every word on it comes from data.js: the comment and check text Graft's real renderers
- * produced in the offline e2e run e2e-20261021-ugrjhd (fake GitHub, canned model answers). Nothing here is live.
+ * produced in the offline e2e run e2e-20261105-hepclj (fake GitHub, canned model answers). Nothing here is live.
  *
  * Each scene is fn(t, d, cues), a pure function of t; animations hook onto at(cues, i).
  */
@@ -24,13 +24,13 @@ const RISK = { trivial: G.trivial, logic: G.logic, sensitive: G.sensitive };
 /* the GitHub surface (light theme) */
 const GH = {
   bg: "#ffffff", fg: "#1f2328", muted: "#59636e", border: "#d1d9e0", subtle: "#f6f8fa", link: "#0969da", open: "#1a7f37",
-  neutral: "#59636e", code: "#eff1f3", tab: "#fd8c73", WARNING: "#9a6700", CAUTION: "#d1242f", IMPORTANT: "#8250df", NOTE: "#0969da",
+  neutral: "#59636e", code: "#eff1f3", tab: "#fd8c73", WARNING: "#9a6700", CAUTION: "#d1242f", IMPORTANT: "#8250df", NOTE: "#0969da", TIP: "#1a7f37",
   btn: "#1f883d",
 };
 
 const STR = {
   en: {
-    simulated: "SIMULATED · OFFLINE E2E RUN E2E-20261021-UGRJHD",
+    simulated: "SIMULATED · OFFLINE E2E RUN E2E-20261105-HEPCLJ",
     simulated2: "fake GitHub · canned model answers · Graft's real renderers",
     sandbox: "mmornati/graft-sandbox (simulated)",
     docs: "mmornati.github.io/graft/docs",
@@ -157,9 +157,10 @@ function spans(s) {
     part.split("`").forEach((p, ci) => {
       if (!p) return;
       if (ci % 2) { out.push({ s: p, b: bi % 2 === 1, c: true }); return; }
-      p.split(/(\[[^\]]+\]\([^)]+\)|@[\w-]+)/).forEach((q, li) => {
+      p.split(/(\[[^\]]+\]\([^)]+\)|@[\w-]+|\*[^*]+\*)/).forEach((q, li) => {
         if (!q) return;
         if (li % 2 === 0) out.push({ s: q, b: bi % 2 === 1 });
+        else if (q[0] === "*") out.push({ s: q.slice(1, -1), i: true });
         else if (q[0] === "@") out.push({ s: q, b: true });
         else out.push({ s: q.replace(/^\[([^\]]+)\].*$/, "$1"), a: true });
       });
@@ -167,20 +168,27 @@ function spans(s) {
   });
   return out;
 }
-/* GitHub-flavoured markdown, the subset Graft writes: headings, lists, two-column tables, alerts, a collapsed
- * <details>, <sub>. HTML comments and raw tags are dropped, as GitHub does. */
+/* GitHub-flavoured markdown, the subset Graft writes: headings, lists, two-column tables, the row of five gates,
+ * alerts, <details> folds (kept with their content), rules, <sub>. Section markers are kept so a scene can frame a
+ * section; other HTML comments and raw tags are dropped, as GitHub does. */
 function parseMd(src) {
   const blocks = [];
-  let alert = null, inDetails = false;
+  let alert = null, fold = null, depth = 0;
   for (const raw of src.split("\n")) {
+    if (fold) {
+      if (raw.includes("</details>") && --depth === 0) { fold.body = parseMd(fold.src.join("\n")); fold = null; }
+      else { if (raw.startsWith("<details>")) depth++; fold.src.push(raw); }
+      continue;
+    }
+    let m;
+    if ((m = /^<!-- graft:section:([a-z-]+):start -->$/.exec(raw))) { blocks.push({ t: "mark", s: m[1] }); continue; }
     const l = raw.replace(/<!--.*?-->/g, "");
-    if (inDetails) { if (l.includes("</details>")) inDetails = false; continue; }
     if (alert && !l.startsWith(">")) alert = null;
     if (!l.trim()) { if (raw.trim() === "") blocks.push({ t: "gap" }); continue; }
-    let m;
-    if ((m = /^<details><summary>(.*)<\/summary>/.exec(l))) { blocks.push({ t: "details", s: m[1] }); inDetails = true; continue; }
+    if ((m = /^<details><summary>(.*)<\/summary>/.exec(l))) { fold = { t: "details", s: m[1], src: [] }; depth = 1; blocks.push(fold); continue; }
     if ((m = /^<sub>(.*)<\/sub>/.exec(l))) { blocks.push({ t: "sub", s: m[1] }); continue; }
     if (/^<[^>]+>$/.test(l.trim())) continue;
+    if (/^---$/.test(l.trim())) { blocks.push({ t: "hr" }); continue; }
     if ((m = /^> \[!(\w+)\]/.exec(l))) { alert = { t: "alert", kind: m[1], items: [] }; blocks.push(alert); continue; }
     if (alert) {
       const s = l.replace(/^>\s?/, "");
@@ -189,7 +197,12 @@ function parseMd(src) {
       continue;
     }
     if ((m = /^(#{2,3}) (.*)$/.exec(l))) { blocks.push({ t: m[1].length === 2 ? "h2" : "h3", s: m[2] }); continue; }
-    if (/^\|\s*(---\s*\|\s*)+$/.test(l) || /^\|\s*\|\s*\|$/.test(l)) continue;
+    if (/^\|\s*(:?-+:?\s*\|\s*)+$/.test(l) || /^\|\s*\|\s*\|$/.test(l)) continue;
+    if (/^\|.*\|$/.test(l) && l.slice(2, -2).split(" | ").length === 5) {
+      const cells = l.slice(2, -2).split(" | ").map(spans), last = blocks[blocks.length - 1];
+      if (last && last.t === "gates") last.rows.push(cells); else blocks.push({ t: "gates", rows: [cells] });
+      continue;
+    }
     if ((m = /^\| (.*) \| (.*) \|$/.exec(l))) {
       const last = blocks[blocks.length - 1];
       const row = [spans(m[1]), spans(m[2])];
@@ -204,7 +217,7 @@ function parseMd(src) {
 }
 
 const FS = 15, LH = 23;
-function spanFont(sp, size) { return sp.c ? [size * 0.86, 400, GMONO] : [size, sp.b ? 600 : 400, SANS]; }
+function spanFont(sp, size) { return sp.c ? [size * 0.86, 400, GMONO] : [size, sp.i ? "italic 400" : sp.b ? 600 : 400, SANS]; }
 /* Word-wraps runs of spans into lines of positioned pieces. */
 function flow(runs, maxW, size = FS) {
   const lines = [[]];
@@ -233,30 +246,60 @@ function drawRuns(lines, x, y, o = {}) {
   }));
 }
 
-/* Lays a parsed document out at width w: every block gets a y, a height and a draw function. Sections (h3) are
- * remembered so a scene can scroll to them and frame them. */
-function layoutMd(blocks, w) {
+/* The word that names a fold: "🧬 Provenance · written by…" is "Provenance". */
+function foldName(s) { return s.replace(/[^\x20-\x7e]/g, "").trim().split(" ")[0]; }
+
+/* Lays a parsed document out at width w: every block gets a y, a height and a draw function. Sections (the comment's
+ * markers), folds, the gates and alerts are remembered so a scene can scroll to them and frame them. `open` names the
+ * folds that are open. */
+function layoutMd(blocks, w, open = []) {
   const out = [], sections = {};
   let y = 0, sec = null;
   for (const b of blocks) {
     let h = 0, draw = null;
     const y0 = y;
     if (b.t === "gap") { y += 6; continue; }
+    if (b.t === "mark") { if (sec) sec.h = y0 - sec.y; sec = sections[b.s] = { y: y0, h: 0 }; continue; }
+    if (b.t === "hr") { h = 8; draw = (x, yy) => line([[x, yy + 4], [x + w, yy + 4]], GH.border, 1); }
     if (b.t === "h2") { h = 44; draw = (x, yy) => { text(b.s, x, yy + 24, { size: 22, weight: 600, font: SANS, color: GH.fg }); line([[x, yy + 36], [x + w, yy + 36]], GH.border, 1); }; }
     else if (b.t === "h3") {
       h = 36; draw = (x, yy) => text(b.s, x, yy + 26, { size: 18, weight: 600, font: SANS, color: GH.fg });
-      if (sec) sec.h = y0 - sec.y;
-      sec = sections[b.s] = { y: y0, h: 0 };
     }
     else if (b.t === "p") {
       const lines = b.lines.flatMap(r => flow(r, w));
       h = lines.length * LH + 8; draw = (x, yy) => drawRuns(lines, x, yy + 17);
+      if (b.lines[0]?.[0]?.s === "Before you merge") sections.before = { y: y0, h: 0 };
     }
     else if (b.t === "li") {
       const lines = flow(b.r, w - 26);
       h = lines.length * LH + 2; draw = (x, yy) => { dot(x + 10, yy + 12, 2.6, GH.fg); drawRuns(lines, x + 24, yy + 17); };
     }
-    else if (b.t === "details") { h = LH + 8; draw = (x, yy) => { text("▸", x, yy + 17, { size: 13, font: SANS, color: GH.fg }); text(b.s, x + 16, yy + 17, { size: FS, font: SANS, color: GH.fg }); }; }
+    else if (b.t === "details") {
+      const name = foldName(b.s), isOpen = open.includes(name), inner = isOpen ? layoutMd(b.body, w - 16, open) : null;
+      if (name === "Why" && sections.before) sections.before.h = y0 - sections.before.y;
+      h = LH + 8 + (inner ? inner.h + 6 : 0);
+      draw = (x, yy) => {
+        text(isOpen ? "▾" : "▸", x, yy + 17, { size: 13, font: SANS, color: GH.fg });
+        text(b.s, x + 16, yy + 17, { size: FS, font: SANS, color: GH.fg });
+        if (inner) inner.items.forEach(it => it.draw && it.draw(x + 16, yy + LH + 8 + it.y));
+      };
+      sections[`fold:${name}`] = { y: y0, h };
+    }
+    else if (b.t === "gates") {
+      const rh = 34, cw = w / 5, size = cw < 110 ? 11 : 14;
+      h = b.rows.length * rh + 6;
+      draw = (x, yy) => {
+        b.rows.forEach((r, i) => r.forEach((cell, j) => {
+          const cx = x + j * cw, ry = yy + i * rh;
+          if (i === 0) { ctx.fillStyle = GH.subtle; ctx.fillRect(cx, ry, cw, rh); }
+          ctx.strokeStyle = GH.border; ctx.lineWidth = 1; ctx.strokeRect(cx + 0.5, ry + 0.5, cw, rh);
+          const fl = flow(i === 0 ? cell.map(c => ({ ...c, b: true })) : cell, 999, size);
+          const lw = fl[0].reduce((a, p) => Math.max(a, p.x + p.w), 0);
+          drawRuns(fl, cx + (cw - lw) / 2, ry + 22, { size });
+        }));
+      };
+      sections.gates = { y: y0, h };
+    }
     else if (b.t === "sub") { h = 22; draw = (x, yy) => text(b.s, x, yy + 15, { size: 12, font: SANS, color: GH.muted }); }
     else if (b.t === "table") {
       const c1 = Math.max(...b.rows.map(r => flow(r[0], 999)[0].reduce((a, p) => a + p.w, 0))) + 26;
@@ -272,7 +315,7 @@ function layoutMd(blocks, w) {
       };
     }
     else if (b.t === "alert") {
-      const icon = { WARNING: "⚠", CAUTION: "⊘", IMPORTANT: "!", NOTE: "ⓘ" }[b.kind] ?? "ⓘ";
+      const icon = { WARNING: "⚠", CAUTION: "⊘", IMPORTANT: "!", NOTE: "ⓘ", TIP: "◉" }[b.kind] ?? "ⓘ";
       const items = b.items.map(it => ({ it, lines: flow(it.r, w - 18 - (it.t === "li" ? 26 : 0)) }));
       h = 34 + items.reduce((a, i) => a + i.lines.length * LH + (i.it.t === "p" ? 8 : 2), 0) + 6;
       draw = (x, yy) => {
@@ -286,7 +329,7 @@ function layoutMd(blocks, w) {
           iy += lines.length * LH + (it.t === "p" ? 8 : 2);
         });
       };
-      sections[`alert:${b.kind}`] = { y: y0, h };
+      sections[sections[`alert:${b.kind}`] ? `alert:${b.kind}2` : `alert:${b.kind}`] = { y: y0, h };
     }
     out.push({ y: y0, h, draw, b });
     y += h + (b.t === "li" ? 0 : 6);
@@ -295,7 +338,7 @@ function layoutMd(blocks, w) {
   return { items: out, h: y, sections };
 }
 const MDCACHE = {};
-function md(key, src, w) { const k = `${key}:${w}`; return MDCACHE[k] || (MDCACHE[k] = layoutMd(parseMd(src), w)); }
+function md(key, src, w, open = []) { const k = `${key}:${w}:${open.join()}`; return MDCACHE[k] || (MDCACHE[k] = layoutMd(parseMd(src), w, open)); }
 
 /* PR descriptions keep their line breaks; GitHub drops the comment, the <img> shows nothing useful. */
 function bodySrc(s) { return s.split("\n").map(l => l.replace(/<!--.*?-->/g, "").replace(/<img[^>]*>/g, "").trim()).filter(Boolean).join("\n"); }
@@ -383,7 +426,7 @@ function prPage(pr, w, o = {}) {
     });
   }
   if (o.comment !== false) {
-    const doc = md(`comment${pr.number}`, pr.comment.body, BW - 32);
+    const doc = md(`comment${pr.number}`, pr.comment.body, BW - 32, o.open ?? []);
     const reacts = o.reactions ? 40 : 0, top = 38 + 14;
     const anchors = {};
     Object.entries(doc.sections).forEach(([k, s]) => { anchors[k] = { y: top + s.y, h: s.h }; });
@@ -523,29 +566,85 @@ function sTitle(t, d, cues) {
   });
 }
 
-/* ------------------------------------------------------------------ 2 · the managed comment (s01) */
+/* ------------------------------------------------------------------ 2 · the verdict first (s01) */
 
-function sComment(t, d, cues) {
-  const pr = PRS.s01, c = [0, 1, 2, 3, 4].map((i, j) => at(cues, i, 0.5 + j * 4.5));
-  plate("I", "The managed comment", seg(t, 0, 0.5));
-  head("One comment,", "kept up to date.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { size: 40, y: 140 });
-  notes([["Intent card", c[2], "goal · risk · behavior"], ["Provenance", c[3], "agent · model · task"], ["Policy", c[4], "what graft.yaml would do"]], t, 80, 300);
-  slip(pr, seg(t, 0.6, 1.2), 80, 498);
-  const page = prPage(pr, WW - 52, { checks: false });
-  const intent = page.find("comment", "Intent"), prov = page.find("comment", "Provenance"), pol = page.find("comment", "Policy");
-  const scroll = scrollAt(t, [[0, 0], [c[2] - 0.6, focus(intent, 10)], [c[3] - 0.5, focus(prov)], [c[4] - 0.5, focusBottom(pol)]]);
-  ghWindow(pr, page, WX, WY, WW, WH, {
-    alpha: seg(t, 0.2, 0.8), scroll,
-    appear: { header: seg(t, 0.4, 1.0), desc: seg(t, 0.8, 1.4), comment: seg(t, c[1] - 0.2, c[1] + 0.5) },
-    frames: [[intent, seg(t, c[2], c[2] + 0.5) - seg(t, c[3] - 0.4, c[3])], [prov, seg(t, c[3], c[3] + 0.5) - seg(t, c[4] - 0.4, c[4])], [pol, seg(t, c[4], c[4] + 0.5)]],
+/* The status card (src/modules/policy/card.ts, light theme) for this pull request, drawn from its table of gates. */
+const CARD = { ok: ["#1a7f37", "#dafbe1"], warn: ["#9a6700", "#fff8c5"], bad: ["#d1242f", "#ffebe9"], neutral: ["#59636e", "#f6f8fa"] };
+function statusCard(pr, x, y, k) {
+  const rows = parseMd(pr.comment.body).find(b => b.t === "gates").rows, w = 720, h = 156, P = 20, G5 = 8;
+  const label = rows[0].map(c => c.map(p => p.s).join("").replace(/[^\x20-\x7e]/g, "").trim());
+  const gates = rows[1].map((c, i) => ({ label: label[i], value: c.map(p => p.s).join("").replace(/[^\x20-\x7e/]/g, "").trim(),
+    status: { "✅": "ok", "🟠": "warn", "❌": "bad" }[c[0].s.trim()] ?? "neutral" }));
+  const passed = gates.filter(g => g.status === "ok").length, tw = (w - 2 * P - 4 * G5) / 5;
+  alpha(k, () => {
+    sheet(x, y, w, h, { fill: "#fff", stroke: GH.border, r: 12 });
+    dot(x + P + 18, y + P + 18, 18, CARD.ok[1]);
+    check(x + P + 18, y + P + 18, 18, CARD.ok[0], 1);
+    text("Safe to merge", x + P + 48, y + P + 15, { size: 17, weight: 600, font: SANS, color: GH.fg });
+    text("no approval needed", x + P + 48, y + P + 34, { size: 13, font: SANS, color: GH.muted });
+    text("Ready to merge", x + w - P, y + P + 8, { size: 11, font: SANS, color: GH.muted, align: "right" });
+    gates.forEach((g, n) => { ctx.save(); rr(x + w - P - 122 + n * 25, y + P + 15, 22, 6, 3); ctx.fillStyle = g.status === "ok" ? CARD.ok[0] : "#d1d9e0"; ctx.fill(); ctx.restore(); });
+    text(`${passed} of 5 gates`, x + w - P, y + P + 36, { size: 11, font: SANS, color: GH.muted, align: "right" });
+    gates.forEach((g, n) => {
+      const tx = x + P + n * (tw + G5), ty = y + P + 54, c = CARD[g.status];
+      ctx.save(); rr(tx, ty, tw, 50, 8); ctx.fillStyle = c[1]; ctx.fill(); ctx.restore();
+      text(g.label, tx + 10, ty + 19, { size: 11, font: SANS, color: c[0] });
+      text(g.value, tx + 10, ty + 38, { size: 14, weight: 600, font: SANS, color: g.status === "neutral" ? GH.fg : c[0] });
+    });
+    text("report mode, Graft blocks nothing", x + P, y + h - 12, { size: 11, font: SANS, color: GH.muted });
   });
 }
 
-/* ------------------------------------------------------------------ 3 · three neutral checks (s01) */
+function sVerdict(t, d, cues) {
+  const pr = PRS.s01, c = [0, 1, 2, 3, 4].map((i, j) => at(cues, i, 0.5 + j * 4));
+  plate("I", "The verdict first", seg(t, 0, 0.5));
+  head("The verdict first,", "the details on demand.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { size: 36, y: 140 });
+  notes([["Verdict", c[1], "a colored box"], ["Five gates", c[2], "intent · risk · CI · AI · approvals"], ["Why", c[3], "folded, one click away"]], t, 80, 300);
+  slip(pr, seg(t, 0.6, 1.2), 80, 498);
+  const open = t >= c[3] ? ["Why"] : [];
+  const page = prPage(pr, WW - 52, { checks: false, open });
+  const alertBox = page.find("comment", "alert:TIP"), gates = page.find("comment", "gates"), why = page.find("comment", "fold:Why");
+  ghWindow(pr, page, WX, WY, WW, WH, {
+    alpha: seg(t, 0.2, 0.8), scroll: scrollAt(t, [[0, 0], [c[1] - 0.8, focus(alertBox, 70)]]),
+    appear: { header: seg(t, 0.4, 1.0), desc: seg(t, 0.8, 1.4), comment: seg(t, c[1] - 0.2, c[1] + 0.5) },
+    frames: [[alertBox, seg(t, c[1] + 0.3, c[1] + 0.8) - seg(t, c[2] - 0.4, c[2])], [gates, seg(t, c[2], c[2] + 0.5) - seg(t, c[3] - 0.4, c[3])], [why, seg(t, c[3], c[3] + 0.5) - seg(t, c[4] - 0.4, c[4])]],
+  });
+  statusCard(pr, WX + 40, 410, seg(t, c[4] - 0.1, c[4] + 0.5));
+}
+
+/* ------------------------------------------------------------------ 3 · the rest of the comment (s01) */
+
+function sComment(t, d, cues) {
+  const pr = PRS.s01, c = [0, 1, 2, 3, 4].map((i, j) => at(cues, i, 0.5 + j * 4));
+  plate("II", "The managed comment", seg(t, 0, 0.5));
+  head("One comment,", "kept up to date.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { size: 40, y: 140 });
+  notes([["Intent card", c[0], "goal · asked vs done · behavior"], ["Provenance", c[3], "agent · model · task"], ["Policy", c[4], "what graft.yaml would do"]], t, 80, 300);
+  slip(pr, seg(t, 0.2, 0.8), 80, 498);
+  const ALL = ["What", "Behavior", "How", "Provenance", "Policy"];
+  const open = [];
+  if (t >= c[1]) open.push("What");
+  if (t >= c[2]) open.push("Behavior", "How");
+  if (t >= c[3]) open.push("Provenance");
+  if (t >= c[4]) open.push("Policy");
+  const page = prPage(pr, WW - 52, { checks: false, open });
+  // Scroll positions come from the page with every fold open: a fold only moves what is below it.
+  const full = prPage(pr, WW - 52, { checks: false, open: ALL });
+  const f = n => full.find("comment", `fold:${n}`);
+  const fr = n => page.find("comment", `fold:${n}`);
+  const intent = page.find("comment", "intent");
+  const scroll = scrollAt(t, [[0, focus(full.find("comment", "intent"), 60)], [c[1] - 0.2, focus(f("What"), 60)], [c[2] - 0.2, focus(f("Behavior"), 40)], [c[3] - 0.2, focus(f("Provenance"), 40)], [c[4] - 0.2, focus(f("Policy"), 40)]]);
+  ghWindow(pr, page, WX, WY, WW, WH, {
+    scroll,
+    frames: [[{ y: intent.y, h: 28 }, seg(t, c[0], c[0] + 0.5) - seg(t, c[1] - 0.4, c[1])], [fr("What"), seg(t, c[1], c[1] + 0.5) - seg(t, c[2] - 0.4, c[2])],
+      [fr("Behavior"), seg(t, c[2], c[2] + 0.5) - seg(t, c[3] - 0.4, c[3])], [fr("Provenance"), seg(t, c[3], c[3] + 0.5) - seg(t, c[4] - 0.4, c[4])], [fr("Policy"), seg(t, c[4], c[4] + 0.5)]],
+  });
+}
+
+/* ------------------------------------------------------------------ 4 · three neutral checks (s01) */
 
 function sChecks(t, d, cues) {
   const pr = PRS.s01, c = [0, 1, 2, 3].map((i, j) => at(cues, i, 0.5 + j * 3.6));
-  plate("II", "Three check runs", seg(t, 0, 0.5));
+  plate("III", "Three check runs", seg(t, 0, 0.5));
   head("Three checks,", "all neutral.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { size: 40, y: 140 });
   notes([["graft/intent", c[0] + 0.4, "Card is accurate · Card is wrong"], ["graft/provenance", c[0] + 1.1, "who wrote it"], ["graft/policy", c[0] + 1.8, "report mode never blocks"]], t, 80, 300);
   slip(pr, 1, 80, 498);
@@ -565,45 +664,46 @@ function sChecks(t, d, cues) {
   }));
 }
 
-/* ------------------------------------------------------------------ 4 · the verifier disagrees (s03) */
+/* ------------------------------------------------------------------ 5 · the verifier disagrees (s03) */
 
 function sMisleading(t, d, cues) {
-  const pr = PRS.s03, c = [0, 1, 2, 3].map((i, j) => at(cues, i, 0.5 + j * 4));
-  plate("III", "PR #4 · misleading body", seg(t, 0, 0.5));
+  const pr = PRS.s03, c = [0, 1, 2, 3, 4, 5].map((i, j) => at(cues, i, 0.5 + j * 3.6));
+  plate("IV", "PR #4 · misleading body", seg(t, 0, 0.5));
   head("The body says typo.", "The diff disagrees.", seg(t, 0.1, 0.7), seg(t, c[1], c[1] + 0.6), { size: 36, y: 140 });
-  notes([["“No behavior change.”", c[0] + 0.5, "the PR description"], ["Verifier: 0 of 4", c[1] + 0.4, "claims supported"], ["Risk logic", c[3], "would require 1 human"]], t, 80, 300);
+  notes([["“No behavior change.”", c[0] + 0.5, "the PR description"], ["Verifier: 0 of 5", c[1] + 0.4, "claims supported"], ["Don't merge yet", c[2], "and what to check"], ["Risk logic", c[5], "would require 1 human"]], t, 80, 280);
   slip(pr, seg(t, 0.4, 1), 80, 498);
-  const page = prPage(pr, WW - 52, {});
-  const desc = page.find("desc"), warn = page.find("comment", "alert:WARNING"), intent = page.find("comment", "Intent"), pol = page.find("comment", "Policy");
-  const scroll = scrollAt(t, [[0, 0], [c[1] - 0.2, focus(intent, 10)], [c[2] - 0.5, focusBottom(warn)], [c[3] - 0.4, focusBottom(pol)]]);
+  const open = t >= c[3] ? ["What"] : [], page = prPage(pr, WW - 52, { open }), full = prPage(pr, WW - 52, { open: ["What", "Policy"] });
+  const desc = page.find("desc"), verdict = page.find("comment", "alert:CAUTION"), before = page.find("comment", "before"), asked = page.find("comment", "fold:What"), warn = page.find("comment", "alert:WARNING"), pol = page.find("comment", "fold:Policy");
+  const scroll = scrollAt(t, [[0, 0], [c[2] - 0.6, focus(verdict, 20)], [c[3] - 0.3, focus(full.find("comment", "fold:What"), 40)], [c[4] - 0.4, focus(full.find("comment", "alert:WARNING"), 60)], [c[5] - 0.4, focusBottom(full.find("comment", "fold:Policy"), 60)]]);
   ghWindow(pr, page, WX, WY, WW, WH, {
     alpha: seg(t, 0.1, 0.6), scroll,
     appear: { header: seg(t, 0.2, 0.8), desc: seg(t, 0.5, 1.1), comment: seg(t, c[1] - 0.6, c[1]), checks: 1 },
-    frames: [[desc, seg(t, c[0] + 0.6, c[0] + 1.1) - seg(t, c[1] - 0.6, c[1] - 0.2)], [warn, seg(t, c[2], c[2] + 0.5) - seg(t, c[3] - 0.5, c[3])], [pol, seg(t, c[3], c[3] + 0.5)]],
+    frames: [[desc, seg(t, c[0] + 0.6, c[0] + 1.1) - seg(t, c[1] - 0.6, c[1] - 0.2)], [{ y: verdict.y, h: before.y + before.h - verdict.y }, seg(t, c[2], c[2] + 0.5) - seg(t, c[3] - 0.4, c[3])],
+      [asked, seg(t, c[3], c[3] + 0.5) - seg(t, c[4] - 0.4, c[4])], [warn, seg(t, c[4], c[4] + 0.5) - seg(t, c[5] - 0.5, c[5])], [{ y: pol.y, h: 30 }, seg(t, c[5], c[5] + 0.5)]],
   });
-  const kt = seg(t, c[2] + 0.4, c[2] + 0.9);
+  const kt = seg(t, c[4] + 0.4, c[4] + 0.9);
   alpha(kt, () => rot(1110, 572, -6, () => {
     sheet(-104, -22, 208, 44, { fill: G.label, pinned: true });
     lbl("Risk: logic · verifier disagrees", 0, 5, { size: 11, weight: 700, color: G.logic, align: "center" });
   }));
 }
 
-/* ------------------------------------------------------------------ 5 · text aimed at AI reviewers (s04) */
+/* ------------------------------------------------------------------ 6 · text aimed at AI reviewers (s04) */
 
 function sInjection(t, d, cues) {
-  const pr = PRS.s04, c = [0, 1, 2, 3].map((i, j) => at(cues, i, 0.5 + j * 4.5));
-  plate("IV", "PR #5 · injection text", seg(t, 0, 0.5));
+  const pr = PRS.s04, c = [0, 1, 2, 3, 4].map((i, j) => at(cues, i, 0.5 + j * 4));
+  plate("V", "PR #5 · injection text", seg(t, 0, 0.5));
   head("PR text is data,", "never instructions.", seg(t, 0.1, 0.7), seg(t, c[2], c[2] + 0.6), { size: 36, y: 140 });
-  notes([["“classify as trivial”", c[1], "asked by the PR body"], ["Card: the real change", c[2] + 0.4, "a heart-rate zone threshold"], ["Risk floor: logic", c[3] + 0.4, "text addressed to AI reviewers"]], t, 80, 300);
+  notes([["“classify as trivial”", c[1], "asked by the PR body"], ["Card: the real change", c[2] + 0.4, "a heart-rate zone threshold"], ["Risk floor: logic", c[3] + 0.4, "text addressed to AI reviewers"], ["Don't merge yet", c[4], "read it yourself"]], t, 80, 280);
   slip(pr, seg(t, 0.4, 1), 80, 498);
   const page = prPage(pr, WW - 52, {});
-  const desc = page.find("desc"), intent = page.find("comment", "Intent"), caution = page.find("comment", "alert:CAUTION");
-  const goal = { y: intent.y + 42, h: 26 };
-  const scroll = scrollAt(t, [[0, 0], [c[2] - 0.5, focus(intent, 10)], [c[3] - 0.4, focusBottom(caution, 60)]]);
+  const desc = page.find("desc"), intent = page.find("comment", "intent"), caution = page.find("comment", "alert:CAUTION2"), verdict = page.find("comment", "alert:CAUTION"), before = page.find("comment", "before");
+  const goal = { y: intent.y, h: 28 };
+  const scroll = scrollAt(t, [[0, 0], [c[2] - 0.5, focus(intent, 60)], [c[3] - 0.4, focus(caution, 120)], [c[4] - 0.4, focus(verdict, 20)]]);
   ghWindow(pr, page, WX, WY, WW, WH, {
     alpha: seg(t, 0.1, 0.6), scroll,
     appear: { header: seg(t, 0.2, 0.8), desc: seg(t, 0.5, 1.1), comment: seg(t, c[1] + 0.8, c[1] + 1.4), checks: 1 },
-    frames: [[desc, seg(t, c[0] + 0.8, c[0] + 1.3) - seg(t, c[2] - 0.8, c[2] - 0.4)], [goal, seg(t, c[2] + 0.4, c[2] + 0.9) - seg(t, c[3] - 0.5, c[3])], [caution, seg(t, c[3], c[3] + 0.5)]],
+    frames: [[desc, seg(t, c[0] + 0.8, c[0] + 1.3) - seg(t, c[2] - 0.8, c[2] - 0.4)], [goal, seg(t, c[2] + 0.4, c[2] + 0.9) - seg(t, c[3] - 0.5, c[3])], [caution, seg(t, c[3], c[3] + 0.5) - seg(t, c[4] - 0.4, c[4])], [{ y: verdict.y, h: before.y + before.h - verdict.y }, seg(t, c[4], c[4] + 0.5)]],
   });
   // the injected line is struck through, in the herbarium's red
   const ks = seg(t, c[1] + 0.2, c[1] + 0.9) * (1 - seg(t, c[2] - 0.8, c[2] - 0.4));
@@ -614,11 +714,11 @@ function sInjection(t, d, cues) {
   }
 }
 
-/* ------------------------------------------------------------------ 6 · how ratings count (s08, s01) */
+/* ------------------------------------------------------------------ 7 · how ratings count (s08, s01) */
 
 function sRatings(t, d, cues) {
   const p8 = PRS.s08, p2 = PRS.s01, c = [0, 1, 2, 3].map((i, j) => at(cues, i, 0.5 + j * 4.5));
-  plate("V", "Card ratings", seg(t, 0, 0.5));
+  plate("VI", "Card ratings", seg(t, 0, 0.5));
   head("A rating counts", "when a reviewer gives it.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { size: 36, y: 140 });
   // the PR 8 page on the left: approval, the 👍, the pressed button
   const LWX = 80, LWW = 560, LWH = 380, LWY = 222;
@@ -666,11 +766,11 @@ function sRatings(t, d, cues) {
   });
 }
 
-/* ------------------------------------------------------------------ 7 · report mode */
+/* ------------------------------------------------------------------ 8 · report mode */
 
 function sReport(t, d, cues) {
   const pr = PRS.s03, c = [0, 1, 2, 3].map((i, j) => at(cues, i, 0.5 + j * 3.4));
-  plate("VI", "Report mode", seg(t, 0, 0.5));
+  plate("VII", "Report mode", seg(t, 0, 0.5));
   head("Graft reports.", "It never blocks a merge.", seg(t, 0.1, 0.7), seg(t, c[2], c[2] + 0.6), { size: 44, y: 140 });
   // the checks of PR 4 and an enabled merge button
   const page = prPage(pr, 640 - 52, { desc: false, comment: false, merge: true, expand: { policy: outCubic(seg(t, c[1], c[1] + 0.5)) } });
@@ -692,7 +792,7 @@ function sReport(t, d, cues) {
   }));
 }
 
-/* ------------------------------------------------------------------ 8 · close */
+/* ------------------------------------------------------------------ 9 · close */
 
 function sClose(t, d, cues) {
   const a1 = at(cues, 1, 2.8), a2 = at(cues, 2, 6.4);
@@ -729,7 +829,7 @@ VIDEO.create({
   fonts: ['400 20px "IM Fell English"', 'italic 400 20px "IM Fell English"', '400 20px Literata', '600 20px Literata',
     '400 20px "Courier Prime"', '700 20px "Courier Prime"'],
   scenes: {
-    title: sTitle, comment: sComment, checks: sChecks, misleading: sMisleading, injection: sInjection,
+    title: sTitle, verdict: sVerdict, comment: sComment, checks: sChecks, misleading: sMisleading, injection: sInjection,
     ratings: sRatings, report: sReport, close: sClose,
   },
 });

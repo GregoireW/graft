@@ -26,6 +26,24 @@
         ],
         "createdAt": "2026-11-02T19:18:10.416Z",
         "reason": "Claude: hostile-input fixture in an escaping test, not rendered UI"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "website/index.html"
+        ],
+        "createdAt": "2026-11-05T20:12:06.209Z",
+        "reason": "agent triage: .gh-alert reproduces GitHub's alert box inside the fictional Graft comment rendition (Plate III), so the left border is what GitHub draws"
+      },
+      {
+        "rule": "repeated-container-text",
+        "value": "*",
+        "files": [
+          "website/index.html"
+        ],
+        "createdAt": "2026-11-05T20:12:06.228Z",
+        "reason": "agent triage: repeats come from real renderer output in the comment rendition (paths, model ids, head SHA) and one Neutral state per check row"
       }
     ]
   }

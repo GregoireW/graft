@@ -1,8 +1,8 @@
 # graft.yaml reference (version 1)
 
-`graft.yaml` tells Graft how a repository wants its pull requests reviewed. **In Phase 0 Graft only reports.** For every open pull request it evaluates the file and shows what it *would* do (auto-approve, require reviewers, block) in a `graft/policy` check run and in the `policy` section of the Graft comment. The check always concludes `neutral`: it approves nothing, blocks nothing, and is not a replacement for required reviewers. Keep your branch protection as it is, and do not make `graft/policy` a required check.
+`graft.yaml` tells Graft how a repository wants its pull requests reviewed. **By default Graft only reports.** For every open pull request it evaluates the file and shows what it *would* do (auto-approve, require reviewers, block) in a `graft/policy` check run and in the `policy` section of the Graft comment. In report mode the check concludes `neutral`: it approves nothing, blocks nothing, and is not a replacement for required reviewers. Keep your branch protection as it is, and do not make `graft/policy` a required check until the repository is set to enforce. Only an operator can do that, never this file; see [Modes](features/modes.md).
 
-Teams are **not checked** until Phase 1. Phase 0 shows which teams a rule would require, and counts approvals from anyone.
+In enforce mode, `graft/policy` counts approvals with write access on the current head, from verified members of the teams a rule requires; report mode shows what it would conclude. See [Policy](features/policy.md).
 
 ## Where the file lives, and whom Graft trusts
 

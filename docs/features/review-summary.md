@@ -12,8 +12,8 @@ Everything else Graft knows follows, folded, each fold titled with an icon and a
 An example, for a pull request that adds file uploads to a chat:
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../assets/review-summary/card-dark.svg">
-  <img alt="Needs human review: 3 things to check · 2 approvals needed. Intent: Matches. Risk: Sensitive. CI: 15/16 running. AI review: Ran. Approvals: 0/2." src="../../assets/review-summary/card-light.svg" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="https://mmornati.github.io/graft/docs/assets/review-summary/card-dark.svg">
+  <img alt="Needs human review: 3 things to check · 2 approvals needed. Intent: Matches. Risk: Sensitive. CI: 15/16 running. AI review: Ran. Approvals: 0/2." src="https://mmornati.github.io/graft/docs/assets/review-summary/card-light.svg" width="720">
 </picture>
 
 Without a public URL, the same gates as markdown:
@@ -71,7 +71,7 @@ Graft checks that the card matches the diff and applies the policy. It does not 
 | ⚠️ Not without a human review | Risk `sensitive`, the card is unavailable or unverified, part of what was asked is missing, or a file is out of scope |
 | 🟡 Needs a normal review | Risk `logic` without a clean independent AI review, CI still running, or checks not read |
 | 🟢 Low risk | Risk `logic`, CI green, and an independent AI review that reports no issues |
-| 🟢 Safe to merge | Risk `trivial` and CI green |
+| 🟢 Safe to merge | Risk `trivial` and no CI check failing or running (a head with no checks at all counts: the line then says "no checks on this head") |
 
 A `sensitive` change always needs a human, whatever CI and AI reviews say. The line never changes what the policy requires: approvals stay the policy's decision.
 

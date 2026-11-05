@@ -61,9 +61,19 @@ fly logs --app <app-name>
 
 The worker logs `worker started` and `mode ceiling` = `report`.
 
+To run a published image instead of building, use `fly deploy --image ghcr.io/mmornati/graft:<version>` ([Published images](README.md#published-images)).
+
 ## 5. Point the App at Fly
 
 Follow [Pointing the App at the deployment](README.md#pointing-the-app-at-the-deployment), with the webhook URL `https://<app-name>.fly.dev/webhooks/github` (or your custom domain, `fly certs add <domain>`).
+
+## Optional: the status card
+
+To draw the [review summary](../features/review-summary.md#the-status-card)'s gates as an image, tell Graft its public address:
+
+```sh
+fly secrets set --app <app-name> GRAFT_PUBLIC_URL=https://<app-name>.fly.dev
+```
 
 ## Operating
 

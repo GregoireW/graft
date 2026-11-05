@@ -21,6 +21,17 @@ Both long-running processes share one **Postgres 17** database, which also holds
 
 The optional [operator console](../console.md) is not part of this image: it has its own (`console/Dockerfile`), its own read-only database role and none of these secrets.
 
+## Published images
+
+Publishing a GitHub release builds both images and pushes them to the GitHub Container Registry, tagged with the release version. There is no `latest` tag: pin a version.
+
+```sh
+docker pull ghcr.io/mmornati/graft:v0.2.2
+docker pull ghcr.io/mmornati/graft-console:v0.2.2
+```
+
+The [Fly.io](fly.md) and [Coolify](coolify.md) guides build from source by default, which also works for a fork. Check the [changelog](../../CHANGELOG.md) before moving to a new version, and run the migrations first.
+
 The operator CLI runs in the same image: `node dist/bin/graft.js <command>` (for example `mode show --installation <id>` or `pilot doctor`). Inside a container it reads the same environment as the server.
 
 ## Configuration

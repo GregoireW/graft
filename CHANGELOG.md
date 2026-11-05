@@ -4,8 +4,21 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 
 ## Unreleased
 
+### Changed
+
+- The documentation, the website and the videos catch up with `v0.2.x`: the sample comment in the README and on the website is the current one, the reviewer tour is rebuilt on a new offline run with a new chapter on the verdict, and the explainer no longer says Graft only reports or that only Anthropic receives data. The pilot onboarding guide now speaks of the configured model provider.
+
+## v0.2.2 (2026-11-05): Gemini on Vertex AI
+
 ### Added
 
+- The `vertex-ai` provider kind: Gemini through Google's Gen AI SDK with Application Default Credentials, no API key. [Vertex AI with ADC](docs/model-providers.md#gemini-on-vertex-ai-with-adc)
+
+## v0.2.1 (2026-11-05): Visual review summary, container images
+
+### Added
+
+- Release images: publishing a GitHub release pushes `ghcr.io/mmornati/graft` and `ghcr.io/mmornati/graft-console`, tagged with the release version. [Published images](docs/deploy/README.md#published-images)
 - A more visual review summary: the verdict in a colored GitHub alert box, five gates (intent, risk, CI, AI review, approvals) with status icons, a "Before you merge" list with an icon per kind of point, and the detailed answers folded under "Why this verdict". Every fold title carries an icon and a count. [Review summary](docs/features/review-summary.md)
 - `GRAFT_PUBLIC_URL`: when set, the gates are drawn as a status card image (light and dark), served by the server at `/summary-card/<signed token>.svg` without any database read. [Status card](docs/features/review-summary.md#the-status-card)
 

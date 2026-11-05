@@ -247,6 +247,16 @@ html { scrollbar-color: var(--rule) var(--board); }
 .gh table { border-collapse: collapse; margin: 0 0 10px; display: block; overflow-x: auto; max-width: 100%; }
 .gh th, .gh td { border: 1px solid var(--sheet-edge); padding: 6px 12px; text-align: left; }
 .gh th { font-weight: 600; }
+.gh hr { border: 0; border-top: 1px solid var(--sheet-edge); margin: 14px 0 16px; }
+.gh-alert { border-left: 4px solid var(--logic); padding: 2px 0 2px 14px; margin: 8px 0 14px; }
+.gh-alert p { margin: 0 0 6px; }
+.gh-alert__kind { color: var(--logic); font-weight: 600; }
+.gh .gh-gates { display: table; width: 100%; table-layout: fixed; }
+.gh .gh-gates th, .gh .gh-gates td { text-align: center; padding: 6px 4px; font-size: .86rem; overflow-wrap: anywhere; }
+.gh-card { margin: 22px 0 0; }
+.gh-card img { display: block; width: 100%; height: auto; }
+.gh-card figcaption { margin-top: 6px; font-size: .84rem; color: var(--ink-3); }
+@media (max-width: 520px) { .gh .gh-gates th, .gh .gh-gates td { font-size: .72rem; padding: 4px 2px; } }
 .gh__link { color: var(--cambium-ink); text-decoration: underline; text-underline-offset: .2em; }
 .gh__meta { color: var(--ink-2); font-size: .88rem; }
 .gh__sub { font-size: .78rem; color: var(--ink-3); margin-top: 18px !important; }

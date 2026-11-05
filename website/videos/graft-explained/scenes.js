@@ -27,7 +27,7 @@ const STR = {
   en: {
     tagline1: "Intent review and policy checks",
     tagline2: "for pull requests written by coding agents.",
-    status: "PHASE 0 · SHADOW MODE · REPORT ONLY",
+    status: "REPORT MODE BY DEFAULT",
     fictional: "every organisation, person and pull request shown is fictional",
   },
 };
@@ -674,16 +674,16 @@ function sWorkflow(t, d, cues) {
   lbl("agents: same workflow + four commit trailers", RX + 30, 594, { size: 13, weight: 700, color: G.cambiumInk, alpha: seg(t, a[2] + 1.2, a[2] + 1.8) });
 }
 
-/* ------------------------------------------------------------------ 10 · privacy and shadow mode */
+/* ------------------------------------------------------------------ 10 · privacy and report mode */
 
 function sTrust(t, d, cues) {
   const a1 = at(cues, 1, 4.7), a2 = at(cues, 2, 7.4), a3 = at(cues, 3, 11);
-  plate("IX", "Privacy and shadow mode", seg(t, 0, 0.5));
+  plate("IX", "Privacy and report mode", seg(t, 0, 0.5));
   head("Graft keeps the label,", "not the specimen.", seg(t, 0.1, 0.7), seg(t, 0.4, 1.0), { y: 140, size: 44 });
   const COLS = [
     { x: 80, h: "Never stored", items: ["file contents", "diffs", "PR titles and bodies", "commit messages"], k: 0.5, c: G.ink },
     { x: 320, h: "Stored", items: ["paths", "commit SHAs", "numbers", "the model's own prose"], k: a1 - 0.2, c: G.ink },
-    { x: 560, h: "Sent to Anthropic", items: ["the diff", "PR title and body", "the linked issue", "to write and check cards"], k: a1 + 1.4, c: G.ink2 },
+    { x: 560, h: "Sent to the provider", items: ["the diff", "PR title and body", "the linked issue", "to write and check cards"], k: a1 + 1.4, c: G.ink2 },
   ];
   COLS.forEach((c, i) => {
     const k = seg(t, c.k, c.k + 0.5);
@@ -702,7 +702,7 @@ function sTrust(t, d, cues) {
   });
   para("Graft keeps only review metadata. GitHub keeps the code, the pull requests and CI, so removing Graft leaves every repository intact.", 80, 484, 690, { size: 17, lh: 26, font: LIT, color: G.ink2, alpha: seg(t, a1 + 2.4, a1 + 3) });
 
-  // the field note on shadow mode
+  // the field note on report mode
   const kn = seg(t, a2 - 0.3, a2 + 0.4);
   alpha(kn, () => rot(1000, 400, 1.2, () => {
     sheet(-185, -186, 370, 362, { fill: G.label, pinned: true });
@@ -710,7 +710,7 @@ function sTrust(t, d, cues) {
     for (let y = -122; y < 170; y += 32) { ctx.beginPath(); ctx.moveTo(-165, y); ctx.lineTo(165, y); ctx.stroke(); }
     ctx.restore();
     text("Field note", -160, -138, { size: 28, weight: "italic 400", font: FELL });
-    const N = [["Phase 0 · report only", 0], ["every check: neutral", 0.5], ["“would approve” is not approval", 1.0], ["branch protection unchanged", 1.5]];
+    const N = [["report mode by default", 0], ["every check: neutral", 0.5], ["“would approve” is not approval", 1.0], ["branch protection unchanged", 1.5]];
     N.forEach(([s, dl], j) => lbl(s, -160, -97 + j * 32, { size: 15, weight: j ? 400 : 700, alpha: seg(t, a2 + dl, a2 + dl + 0.4) }));
     // the gate
     const kg = seg(t, a3 - 0.2, a3 + 0.4);
@@ -720,12 +720,12 @@ function sTrust(t, d, cues) {
       const gx = -160 + 320 * 0.9 * outCubic(seg(t, a3 + 0.3, a3 + 1.4));
       line([[gx, 56], [gx, 86]], G.cambiumInk, 3);
       lbl("90%", gx, 104, { size: 14, weight: 700, color: G.cambiumInk, align: "center" });
-      lbl("then Phase 1: enforce (planned)", -160, 140, { size: 14, color: G.ink2, alpha: seg(t, a3 + 1.6, a3 + 2.2) });
+      lbl("enforce: the operator's call", -160, 140, { size: 14, color: G.ink2, alpha: seg(t, a3 + 1.6, a3 + 2.2) });
     });
-    // the amber shadow-mode stamp
+    // the amber report-mode stamp
     rot(118, -132, 6, () => alpha(seg(t, a2 + 0.2, a2 + 0.7), () => {
       ctx.strokeStyle = G.logic; ctx.lineWidth = 2; ctx.setLineDash([5, 3]); rr(-58, -20, 116, 40, 5); ctx.stroke(); ctx.setLineDash([]);
-      lbl("SHADOW MODE", 0, 5, { size: 13, weight: 700, color: G.logic, align: "center", spacing: "1px" });
+      lbl("REPORT MODE", 0, 5, { size: 13, weight: 700, color: G.logic, align: "center", spacing: "1px" });
     }));
   }));
 }

@@ -4,7 +4,7 @@
 # SECURITY, source files, folders) to the repository on GitHub at build time.
 
 site_name: Graft
-site_description: "Intent review and policy checks for pull requests written by coding agents. Phase 0: shadow mode, report only."
+site_description: "Intent review and policy checks for pull requests written by coding agents. Report mode by default; enforcement is the operator's choice."
 site_author: Marco Mornati
 site_url: https://mmornati.github.io/graft/docs/
 
@@ -112,6 +112,7 @@ exclude_docs: |
 # Built and searchable, reachable from the pages that link to them, but kept out of the navigation.
 not_in_nav: |
   /phase-0/reviews/
+  /phase-1/reviews/
   /e2e/reviews/
 
 nav:
@@ -147,6 +148,7 @@ nav:
     - E2E runbook: e2e/runbook.md
     - E2E scenarios spec: e2e/live-scenarios-spec.md
     - Pilot onboarding: pilots/onboarding.md
+    - Phase 1 rollout runbook: pilots/phase-1-runbook.md
     - Labeling guide: phase-0/labeling-guide.md
   - Internals:
     - Architecture: architecture.md
@@ -171,4 +173,6 @@ nav:
       - "Step 3: Break-glass": phase-1/step-3-break-glass.md
       - "Step 4: Guard detection": phase-1/step-4-guard-detection.md
       - "Step 5: Revert PRs": phase-1/step-5-revert-prs.md
+      - "Step 6: MCP server": phase-1/step-6-mcp-server.md
+      - "Step 7: Security, pilots and gate": phase-1/step-7-security-pilots-gate.md
       - Human to-do: phase-1/HUMAN-TODO.md

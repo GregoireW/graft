@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Graft · intent review for agent-written pull requests</title>
-<meta name="description" content="Graft is a GitHub App that puts four answers on every pull request written by a coding agent: who wrote it, what it claims, whether the diff matches, and what your policy says. Phase 0: shadow mode, report only.">
+<meta name="description" content="Graft is a GitHub App that puts four answers on every pull request written by a coding agent: who wrote it, what it claims, whether the diff matches, and what your policy says, under a verdict a reviewer can act on. Report mode by default.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#e4e8df" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0e1613" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <meta property="og:title" content="Graft · intent review for agent-written pull requests">
-<meta property="og:description" content="Who wrote it, what it claims, whether the diff matches, what your policy says. Report-only in Phase 0.">
+<meta property="og:description" content="Who wrote it, what it claims, whether the diff matches, what your policy says. Report mode by default.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,7 +59,7 @@
       <a class="btn btn--ghost" href="https://github.com/mmornati/graft">View on GitHub</a>
     </div>
     <p class="status"><a class="textlink" href="videos/reviewer-tour/">Video: what a reviewer sees on a pull request</a> · <a class="textlink" href="videos/enforce-tour/">Video: enforce mode, step by step</a></p>
-    <p class="status"><span class="status__dot" aria-hidden="true"></span>Phase 0, shadow mode: one managed comment and three check runs per pull request, and every check concludes <code>neutral</code>. Graft reports; it never enforces.</p>
+    <p class="status"><span class="status__dot" aria-hidden="true"></span>Report mode by default: one managed comment and three check runs per pull request, and every check concludes <code>neutral</code>. Nothing enforces until an operator sets a repository to enforce.</p>
   </div>
 
   <figure class="plate plate--hero" aria-labelledby="plate1-cap">
@@ -168,14 +168,14 @@
       <li class="custody__row">
         <p class="custody__q">Does the diff match?</p>
         <div class="custody__body">
-          <p>A second model call, the verifier, sees only the diff, the file list and the card, never the title, description or issue, and checks every claim. Fixed rules set a risk floor that no model can lower.</p>
+          <p>A second model call, the verifier, sees only the diff, the file list, the changed files around it and the card, never the title, description or issue, and checks every claim. Fixed rules set a risk floor that no model can lower.</p>
           <p class="custody__by">Signed by <strong>the verifier and the rules</strong> · in <code>graft/intent</code></p>
         </div>
       </li>
       <li class="custody__row">
         <p class="custody__q">What does the policy say?</p>
         <div class="custody__body">
-          <p>Your <code>graft.yaml</code>, read from the base branch only, says whether the change would be auto-approved, need humans or a team, or be blocked. In Phase 0 it reports and decides nothing.</p>
+          <p>Your <code>graft.yaml</code>, read from the base branch only, says whether the change would be auto-approved, need humans or a team, or be blocked. In report mode, the default, it reports and decides nothing.</p>
           <p class="custody__by">Signed by <strong>your policy</strong> · check run <code>graft/policy</code></p>
         </div>
       </li>
@@ -187,7 +187,7 @@
         <li><strong>Server</strong><span>verifies, deduplicates, enqueues in one transaction</span></li>
         <li><strong>Postgres 17 + pg-boss</strong><span>delivery row and job</span></li>
         <li><strong>Worker</strong><span>re-reads the PR, commits, diff and <code>graft.yaml</code> from the API; calls the writer and the verifier</span></li>
-        <li><strong>GitHub</strong><span>three neutral check runs and one managed comment</span></li>
+        <li><strong>GitHub</strong><span>three check runs, neutral in report mode, and one managed comment that opens with a verdict</span></li>
       </ol>
       <figcaption id="flow-cap"><span class="plate-no">Plate II.</span> The worker never trusts the webhook payload: it re-reads everything from the GitHub API and publishes under a per-change lock. <a href="docs/architecture/">Architecture</a></figcaption>
     </figure>
@@ -199,8 +199,8 @@
   <div class="wrap wrap--split">
     <header class="sec-head sec-head--side">
       <h2 id="comment-title">What a reviewer sees.</h2>
-      <p class="sec-lead">An agent adds a login rate limiter; the shipped example policy applies; one reviewer has approved. This is the managed comment as Graft's renderers produce it, for a fictional pull request in a fictional <code>acme</code> organisation.</p>
-      <p class="sec-lead">Reviewers rate the card with a reaction or with the buttons on the <code>graft/intent</code> check. Those votes feed the Phase 0 accuracy gate.</p>
+      <p class="sec-lead">An agent adds a login rate limiter; the shipped example policy applies; CI passed; one reviewer has approved. This is the managed comment as Graft's renderers produce it, for a fictional pull request in a fictional <code>acme</code> organisation. It opens with the verdict, and everything else is one click away.</p>
+      <p class="sec-lead">Reviewers rate the card with a reaction or with the buttons on the <code>graft/intent</code> check. Those votes feed the card accuracy gate.</p>
       <div class="checks" role="group" aria-label="Check runs on the pull request">
         <p class="checks__title">Checks</p>
         <ul>
@@ -217,19 +217,48 @@
       <div class="gh__body">
         <p class="gh__title">Graft</p>
 
-        <h3>Intent</h3>
-        <p><strong>Goal:</strong> Limit failed login attempts to 5 per account per 15 minutes and lock the account for 15 minutes after that.</p>
-        <p><strong>Risk:</strong> <code>sensitive</code> · rules <code>sensitive</code> · writer <code>logic</code> · verifier <code>logic</code></p>
-        <p><strong>Behavior changes</strong></p>
+        <div class="gh-alert gh-alert--warning">
+          <p class="gh-alert__kind">⚠ Warning</p>
+          <p><strong>Needs human review</strong> · 1 thing to check · 1 approval needed</p>
+        </div>
+        <table class="gh-gates">
+          <thead><tr><th scope="col">🎯 Intent</th><th scope="col">🛡️ Risk</th><th scope="col">🧪 CI</th><th scope="col">🤖 AI review</th><th scope="col">👥 Approvals</th></tr></thead>
+          <tbody><tr><td>✅ <strong>Matches</strong></td><td>🟠 <strong>Sensitive</strong></td><td>✅ <strong>3/3 passed</strong></td><td>➖ <strong>None</strong></td><td>🟠 <strong>1/2</strong></td></tr></tbody>
+        </table>
+        <p><strong>Before you merge</strong></p>
         <ul>
-          <li>The sixth failed login for an account within 15 minutes returns 429 with a Retry-After header.</li>
-          <li>A successful login resets the failure counter for that account.</li>
+          <li>🛡️ <strong>Sensitive files</strong> · authentication, security or secrets (<code>src/auth/login.ts</code>, <code>src/auth/rate-limit.ts</code>)</li>
         </ul>
-        <p><strong>Out-of-scope edits:</strong> none</p>
         <details>
-          <summary>How this card was made</summary>
+          <summary>Why this verdict</summary>
           <ul>
-            <li>Rules set the floor to <code>sensitive</code>: authentication, security or secrets (<code>src/auth/rate-limit.ts</code>, <code>src/auth/login.ts</code>)</li>
+            <li><strong>Matches the intent?</strong> ✅ <strong>Yes.</strong> Does what issue #128 asks.</li>
+            <li><strong>Safe to merge?</strong> ⚠️ <strong>Not without a human review.</strong> Risk <code>sensitive</code>: Changes login behavior. <strong>CI:</strong> all 3 passed. <strong>Graft:</strong> 3 of 3 claims supported.</li>
+            <li><strong>Human review:</strong> <strong>2 approvals needed</strong> (1 from <code>@acme/security</code>) · 1 so far · <em>report mode: Graft blocks nothing</em></li>
+          </ul>
+        </details>
+        <hr>
+
+        <p><strong>Goal:</strong> Limit failed login attempts to 5 per account per 15 minutes and lock the account for 15 minutes after that.</p>
+        <details>
+          <summary>🎯 What was asked vs what was done · 2 done</summary>
+          <ul>
+            <li>✅ Limit failed logins to 5 per account per 15 minutes.</li>
+            <li>✅ Lock the account for 15 minutes after the limit.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>📝 Behavior changes · 2</summary>
+          <ul>
+            <li>The sixth failed login for an account within 15 minutes returns 429 with a Retry-After header.</li>
+            <li>A successful login resets the failure counter for that account.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>🔍 How this card was made</summary>
+          <ul>
+            <li><strong>Risk:</strong> <code>sensitive</code> · rules <code>sensitive</code> · writer <code>logic</code> · verifier <code>logic</code></li>
+            <li>Rules set the floor to <code>sensitive</code>: authentication, security or secrets (<code>src/auth/login.ts</code>, <code>src/auth/rate-limit.ts</code>)</li>
             <li>Writer <code>claude-sonnet-5-5</code>; verifier <code>claude-sonnet-5-5</code> supported 3 of 3 claims</li>
             <li>Inputs: PR title and description, issue #128, 3 of 3 files in full</li>
             <li>Model usage: 7,421 input tokens, 913 output tokens, 2 calls</li>
@@ -237,30 +266,43 @@
         </details>
         <p class="gh__meta">Card <code>0b6f3a52</code> · head <code>4c9e1f2</code> · Rate this card with 👍 or 👎 on this comment, or with the buttons on the <code>graft/intent</code> check.</p>
 
-        <h3>Provenance</h3>
-        <table>
-          <tbody>
-            <tr><th scope="row">Authored by</th><td>Agent (Graft trailers)</td></tr>
-            <tr><th scope="row">Agent</th><td><code>claude-code</code></td></tr>
-            <tr><th scope="row">Model</th><td><code>claude-sonnet-5-5</code></td></tr>
-            <tr><th scope="row">Task</th><td><code>#128</code></td></tr>
-            <tr><th scope="row">Session</th><td><span class="gh__link">agents.example.com</span></td></tr>
-            <tr><th scope="row">Opened by</th><td><code>acme-agent[bot]</code></td></tr>
-          </tbody>
-        </table>
-        <p class="gh__meta">Head <code>4c9e1f2</code> · 2 commits, 2 with Graft trailers.</p>
+        <details>
+          <summary>🧬 Provenance · written by an agent (Graft trailers)</summary>
+          <table>
+            <tbody>
+              <tr><th scope="row">Authored by</th><td>Agent (Graft trailers)</td></tr>
+              <tr><th scope="row">Agent</th><td><code>claude-code</code></td></tr>
+              <tr><th scope="row">Model</th><td><code>claude-sonnet-5-5</code></td></tr>
+              <tr><th scope="row">Task</th><td><code>#128</code></td></tr>
+              <tr><th scope="row">Session</th><td><span class="gh__link">agents.example.com</span></td></tr>
+              <tr><th scope="row">Opened by</th><td><code>acme-agent[bot]</code></td></tr>
+            </tbody>
+          </table>
+          <p class="gh__meta">Head <code>4c9e1f2</code> · 2 commits, 2 with Graft trailers.</p>
+        </details>
 
-        <h3>Policy</h3>
-        <p><strong>Would require 2 humans (1 from <code>@acme/security</code>)</strong> · report only</p>
-        <ul>
-          <li>Rule 3 infra-and-auth: paths match <code>src/auth/login.ts</code>, <code>src/auth/rate-limit.ts</code>, <code>test/auth/rate-limit.test.ts</code></li>
-          <li>Rule 4 agent-sensitive: risk <code>sensitive</code> (card), author agent <code>claude-code</code></li>
-        </ul>
-        <p><strong>Approvals so far:</strong> 1 on this head (<code>dana</code>). Team membership is not checked in Phase 0.</p>
-        <p class="gh__meta">Policy <code>graft.yaml</code> on <code>main</code> at <code>9d8c7b6</code> · head <code>4c9e1f2</code> · Graft only reports in Phase 0; it approves and blocks nothing.</p>
+        <details>
+          <summary>👥 Policy · why 2 humans (report only)</summary>
+          <p><strong>Would require 2 humans (1 from <code>@acme/security</code>)</strong> · report only</p>
+          <p><strong>In enforce mode this check would be:</strong> <code>failure</code>, needs approvals: 1 from <code>@acme/security</code>, 1 more from anyone.</p>
+          <ul>
+            <li>Rule 3 infra-and-auth: paths match <code>src/auth/login.ts</code>, <code>src/auth/rate-limit.ts</code>, <code>test/auth/rate-limit.test.ts</code></li>
+            <li>Rule 4 agent-sensitive: risk <code>sensitive</code> (card), author agent <code>claude-code</code></li>
+          </ul>
+          <p><strong>Approvals so far:</strong> 1 on this head (<code>dana</code>); 1 counts (write access).</p>
+          <p class="gh__meta">Policy <code>graft.yaml</code> on <code>main</code> at <code>9d8c7b6</code> · head <code>4c9e1f2</code> · Graft mode: report. Graft approves and blocks nothing here.</p>
+        </details>
         <p class="gh__sub">Maintained by Graft; edits to this comment are overwritten.</p>
+
+        <figure class="gh-card">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/review-summary/acme-card-dark.svg">
+            <img src="assets/review-summary/acme-card-light.svg" width="720" height="156" loading="lazy" alt="Needs human review: 1 thing to check · 1 approval needed. Intent: Matches. Risk: Sensitive. CI: 3/3 passed. AI review: None. Approvals: 1/2.">
+          </picture>
+          <figcaption>With <code>GRAFT_PUBLIC_URL</code> set, the table of gates is drawn as this status card.</figcaption>
+        </figure>
       </div>
-      <p class="gh__cap"><span class="plate-no">Plate III.</span> The managed comment, from the sample in the README. Hidden section markers are left out.</p>
+      <p class="gh__cap"><span class="plate-no">Plate III.</span> The managed comment, from the sample in the README. Open the folds to see the rest. Hidden section markers are left out.</p>
     </article>
   </div>
 </section>
@@ -325,7 +367,7 @@
         <li>A <code>graft/policy</code> check and a policy section in the managed comment.</li>
         <li><code>pnpm graft policy check</code> on the command line and as a CI lint.</li>
         <li>A JSON Schema for editor completion.</li>
-        <li>Report only in Phase 0: the check always concludes <code>neutral</code>.</li>
+        <li>Report mode by default: the check concludes <code>neutral</code> and says what enforce mode would conclude.</li>
       </ul>
       <a class="textlink" href="docs/graft-yaml/">The full graft.yaml reference</a>
     </header>
@@ -379,8 +421,8 @@
         <p>Ids, numbers, SHAs, file paths, counts, and the model's own prose (goal, behavior changes, reasons). Logs carry metadata only: ids, counts, codes.</p>
       </div>
       <div class="ledger__col ledger__col--out">
-        <h3>Sent to Anthropic</h3>
-        <p>To write and verify a card, the diff, the PR text and the linked issue text go to the Anthropic API. Pilot teams agree to this before onboarding. Without an API key, Graft runs with the rule-based floor only.</p>
+        <h3>Sent to the model provider</h3>
+        <p>To write and verify a card, the diff, the PR text and the linked issue text go to the <a class="textlink" href="docs/model-providers/">model provider you configure</a>: the Claude API by default, another API, or a model on your own machine. Pilot teams agree to this before onboarding. Without a provider, Graft runs with the rule-based floor only.</p>
       </div>
       <div class="ledger__col">
         <h3>Kept briefly</h3>
@@ -391,15 +433,16 @@
   </div>
 </section>
 
-<!-- Phase 0 note -->
+<!-- Report mode note -->
 <section class="phase" aria-labelledby="phase-title">
   <div class="wrap">
     <div class="fieldnote">
       <p class="fieldnote__stamp" aria-hidden="true">Report only</p>
-      <h2 id="phase-title">A field note on shadow mode.</h2>
-      <p>Graft starts in <strong>shadow mode</strong>. Out of the box it reports and never enforces: every Graft check concludes <code>neutral</code>, a "would approve" is not an approval, and the post-merge guard only comments. Keep your branch protection as it is.</p>
+      <h2 id="phase-title">A field note on report mode.</h2>
+      <p>Graft starts in <strong>report mode</strong>. Out of the box it reports and never enforces: every Graft check concludes <code>neutral</code>, a "would approve" is not an approval, and the post-merge guard only comments. Keep your branch protection as it is.</p>
       <p>Phase 0 ends at a gate measured from data: at least <strong>90%</strong> of eligible reviewer votes must say the intent cards are accurate, with enough votes, voters, installations and days behind the number, decided with a Wilson interval. The steps are built; the gate awaits pilot data from two pilot teams.</p>
       <p>Phase 1 is built: approvals Graft can enforce, break-glass with an audit log, a post-merge guard that names the commit that broke <code>main</code> and can open a revert pull request, and an MCP server for agents. All of it defaults to report mode, and nothing enforces until an operator raises the server ceiling and sets one repository to enforce, following a staged rollout runbook. Its gate counts PRs merged with no human, review minutes, breakages caught and escaped defects across five pilots. See <a class="textlink" href="docs/features/modes/">Modes</a>, <a class="textlink" href="docs/features/guard/">the post-merge guard</a>, <a class="textlink" href="docs/features/mcp/">MCP</a> and <a class="textlink" href="videos/enforce-tour/">the enforce mode video</a>.</p>
+      <p>Since then: <a class="textlink" href="docs/features/review-summary/">a review summary</a> with a verdict and five gates, <a class="textlink" href="docs/model-providers/">any model provider</a> (the Claude API, OpenAI-compatible APIs, Gemini on Vertex AI, local models, CLIs), and an optional read-only <a class="textlink" href="docs/console/">operator console</a>.</p>
       <a class="textlink" href="docs/plan/development-plan/">The development plan</a>
     </div>
   </div>
@@ -449,7 +492,7 @@ curl localhost:3000/readyz
 <footer class="foot">
   <div class="wrap foot__inner">
     <p class="wordmark wordmark--foot"><img src="assets/mark.svg" alt="" width="22" height="22"><span>Graft</span></p>
-    <p>No license has been chosen yet; all rights reserved. Every organisation, person and pull request on this page is fictional. Not affiliated with GitHub or Anthropic. This site sets no cookies and loads no trackers.</p>
+    <p>No license has been chosen yet; all rights reserved. Every organisation, person and pull request on this page is fictional. Not affiliated with GitHub, Anthropic or any model provider. This site sets no cookies and loads no trackers.</p>
     <nav aria-label="Footer"><a href="docs/">Docs</a><a href="https://github.com/mmornati/graft">GitHub</a><a href="https://github.com/mmornati/graft/blob/main/SECURITY.md">Security</a></nav>
   </div>
 </footer>
