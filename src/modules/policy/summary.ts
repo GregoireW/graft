@@ -9,8 +9,10 @@
  *
  * Graft never calls a change safe because of what it did not find. "Safe to merge" is said only
  * for a `trivial` change with CI green; a `logic` change is at most "low risk", and only with CI
- * green and an independent AI review that reports no issues. A `sensitive` change always needs a
- * human. Model-written text goes through `escapeProse` and only into list items.
+ * green and an independent AI review that reports no issues. CI is green only when at least one
+ * check passed and none is failing, running or unread: a head with no checks shows nothing, so it
+ * gets a normal review. A `sensitive` change always needs a human. Model-written text goes through
+ * `escapeProse` and only into list items.
  */
 import { codeSpan, escapeProse } from "../../github/markdown.js";
 import {
@@ -246,8 +248,9 @@ export function assess(i: SummaryInput): Level {
   if (risk === "sensitive" || card.status !== "ok" || card.verifier.status === "error") {
     level = worst(level, "orange");
   }
-  const ciSettled = s !== null && s.ci.pending === 0 && !s.ci.incomplete;
-  if (!ciSettled || reviews.some((r) => r.state === "pending")) level = worst(level, "yellow");
+  // Failing CI returned above. No passed check is no evidence, whatever the risk.
+  const ciGreen = s !== null && s.ci.passed > 0 && s.ci.pending === 0 && !s.ci.incomplete;
+  if (!ciGreen || reviews.some((r) => r.state === "pending")) level = worst(level, "yellow");
   if (risk === "logic" && !cleanIndependentReview(i)) level = worst(level, "yellow");
   if (risk === null) level = worst(level, "yellow");
   return level;

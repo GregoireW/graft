@@ -296,10 +296,13 @@ describe("review summary", () => {
     expect(assess(logic({ signals: signals(running, gpt) }))).toBe("yellow");
     // Checks not read: never green.
     expect(assess(logic({ signals: null }))).toBe("yellow");
+    // A clean review with no CI on the head: the review is not CI.
+    const reviewOnly = [{ name: "review", state: "passed" as const }];
+    expect(assess(logic({ signals: signals(reviewOnly, gpt) }))).toBe("yellow");
   });
 
-  it("U-SUM-4 trivial with green CI is safe to merge", () => {
-    const i = input({
+  const trivial = (over: Partial<SummaryInput>) =>
+    input({
       card: card({
         risk: { ...card().risk, final: "trivial", floor: "trivial", floorReasons: [] },
         verifier: { ...card().verifier, missing: [] },
@@ -311,8 +314,33 @@ describe("review summary", () => {
           risk: { value: "trivial", final: true, source: "card" },
         }),
       ),
-      signals: signals(ci(2), []),
+      ...over,
     });
+
+  it("U-SUM-4b trivial with no CI evidence is a normal review, never safe to merge", () => {
+    const none = trivial({ signals: signals([], []) });
+    expect(assess(none)).toBe("yellow");
+    const out = renderSummarySection(none);
+    expect(out).toMatch(/^> \[!NOTE\]\n> \*\*Needs a normal review\*\* · no approval needed\n/);
+    expect(out).toContain("🟡 **Needs a normal review.**");
+    expect(out).toContain("**CI:** no checks on this head.");
+    expect(out).not.toContain("🟢");
+    // Only skipped or cancelled checks: nothing passed either.
+    const skipped = signals([{ name: "e2e", state: "other" }], []);
+    expect(assess(trivial({ signals: skipped }))).toBe("yellow");
+    // Checks not read, or some unreadable: green cannot be shown.
+    expect(assess(trivial({ signals: null }))).toBe("yellow");
+    const partial = summarizeSignals(
+      HEAD,
+      [{ name: "unit", state: "passed", app: "github-actions" }],
+      [],
+      true,
+    );
+    expect(assess(trivial({ signals: partial }))).toBe("yellow");
+  });
+
+  it("U-SUM-4 trivial with green CI is safe to merge", () => {
+    const i = trivial({ signals: signals(ci(2), []) });
     expect(assess(i)).toBe("green");
     const out = renderSummarySection(i);
     expect(out).toMatch(/^> \[!TIP\]\n> \*\*Safe to merge\*\* · no approval needed\n/);

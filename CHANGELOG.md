@@ -9,6 +9,10 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 - A more visual review summary: the verdict in a colored GitHub alert box, five gates (intent, risk, CI, AI review, approvals) with status icons, a "Before you merge" list with an icon per kind of point, and the detailed answers folded under "Why this verdict". Every fold title carries an icon and a count. [Review summary](docs/features/review-summary.md)
 - `GRAFT_PUBLIC_URL`: when set, the gates are drawn as a status card image (light and dark), served by the server at `/summary-card/<signed token>.svg` without any database read. [Status card](docs/features/review-summary.md#the-status-card)
 
+### Fixed
+
+- The review summary no longer says "Safe to merge" or "Low risk" for a head with no passed CI check: with no checks at all, or only skipped or cancelled ones, a `trivial` or `logic` change now reads "Needs a normal review". A repository without CI never sees the green verdicts. [Safe to merge?](docs/features/review-summary.md#safe-to-merge)
+
 ## v0.2.0 (2026-11-02): Review summary, any model provider, operator console
 
 Graft can run on models other than the Claude API, an optional console shows what it handled, and the PR comment now opens with a verdict a reviewer can act on. Report mode stays the default.
