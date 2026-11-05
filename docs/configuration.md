@@ -197,7 +197,7 @@ These are read by the CLIs, tests or hooks, not by the server and worker. Secret
 | `GRAFT_E2E_ACTOR_TOKEN` | `pnpm graft e2e` | The actor (repository owner) token; falls back to `gh auth token`. Shell only: the runner refuses to start if `.env` holds any `GRAFT_E2E_*` key or the actor token's value. |
 | `GRAFT_E2E_OUTSIDER_TOKEN` | `pnpm graft e2e` | Optional second account that votes without being a reviewer. Shell only. |
 | `GRAFT_AGENT`, `GRAFT_MODEL`, `GRAFT_TASK`, `GRAFT_SESSION` | `scripts/pilot/prepare-commit-msg` | Values for the `Graft-*` trailers; the hook does nothing without `GRAFT_AGENT`. |
-| `TEST_DATABASE_URL` | integration tests | Default `postgres://graft:graft@localhost:55432/graft_test`; the database is dropped and recreated on every run. |
+| `TEST_DATABASE_URL` | integration tests | Default `postgres://graft:graft@localhost:55432/graft_test`; the database and its per-worker clones (`graft_test_1`, ...) are dropped and recreated on every run. |
 | `GRAFT_PERF` | unit tests | `1` (or `pnpm test:perf`) enforces the millisecond bounds of the performance assertions. |
 
 The e2e runner also sets `GRAFT_E2E_GIT_TOKEN` (for its own `git` child, through `GIT_ASKPASS`) and `GRAFT_E2E_OFFLINE_OUT`, `GRAFT_E2E_OFFLINE_LLM` and `GRAFT_E2E_OFFLINE_SCENARIOS` (for the `--only-offline` test child). They are internal; do not set them yourself.

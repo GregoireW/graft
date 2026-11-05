@@ -14,7 +14,64 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the integration tests are needed: only a pull request can skip them.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      integration: ${{ github.event_name != 'pull_request' || steps.filter.outputs.integration == 'true' }}
+    steps:
+      # On a pull request the action lists the files through the API: no checkout needed.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # Everything the integration tests import or read at runtime, and what they run on.
+          filters: |
+            integration:
+              - "src/**"
+              - "test/**"
+              - "e2e/**"
+              - "eval/**"
+              - "schema/**"
+              - "github/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "vitest.config.ts"
+              - ".nvmrc"
+              - ".github/workflows/ci.yml"
+
+  # Always runs, and needs no database. Not filtered: the unit tests read files under docs/, and
+  # the root lint also covers console/.
   check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+      - run: pnpm eval:ci
+      - run: pnpm graft policy schema --check
+      - run: for f in graft.yaml docs/examples/graft.yaml docs/pilots/graft.*.yaml; do pnpm graft policy check "$f" || exit 1; done
+      - run: pnpm build
+
+  integration:
+    needs: changes
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -41,13 +98,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm eval:ci
-      - run: pnpm graft policy schema --check
-      - run: for f in graft.yaml docs/examples/graft.yaml docs/pilots/graft.*.yaml; do pnpm graft policy check "$f" || exit 1; done
-      - run: pnpm build
+      - run: pnpm test:integration
 
   # The optional operator console (console/): its own pnpm project, typechecked against Graft's schema
   # and tested against a database migrated by Graft's migrations.
@@ -90,3 +141,22 @@ jobs:
         working-directory: console
       - run: pnpm build
         working-directory: console
+
+  # The one check to require on main: a skipped job would otherwise leave a required check pending.
+  # The integration tests may be skipped only when the filter said they were not needed.
+  ci-ok:
+    needs: [changes, check, integration, console]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          CHECK: ${{ needs.check.result }}
+          CONSOLE: ${{ needs.console.result }}
+          INTEGRATION: ${{ needs.integration.result }}
+          INTEGRATION_NEEDED: ${{ needs.changes.outputs.integration }}
+        run: |
+          echo "changes=$CHANGES check=$CHECK console=$CONSOLE integration=$INTEGRATION needed=$INTEGRATION_NEEDED"
+          [ "$CHANGES" = success ] && [ "$CHECK" = success ] && [ "$CONSOLE" = success ] || exit 1
+          [ "$INTEGRATION" = success ] || { [ "$INTEGRATION" = skipped ] && [ "$INTEGRATION_NEEDED" = false ]; }
