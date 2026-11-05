@@ -13,6 +13,7 @@ Providers are **operator configuration only**. A repository cannot choose one in
 | The default: best card quality, least setup | The Claude API | [`ANTHROPIC_API_KEY`](#1-the-claude-api-default) |
 | Claude through a gateway (OpenRouter, Vercel AI Gateway, LiteLLM, Bedrock Mantle) | The Anthropic format on another URL | [`ANTHROPIC_BASE_URL`](#2-claude-through-a-gateway) |
 | OpenAI, Mistral, DeepSeek, Gemini or any model on OpenRouter | `openai-compatible` | [A registry entry with a key](#4-hosted-openai-compatible-providers) |
+| Gemini on Google Cloud with Application Default Credentials (ADC), no API key | `vertex-ai` | [Vertex AI with ADC](#gemini-on-vertex-ai-with-adc) |
 | No diff leaving your network, no per-token bill | `openai-compatible` on a local server (Ollama, vLLM, LM Studio, llama.cpp) | [A registry entry, no key](#5-local-models) |
 | Cheaper cards, keeping Claude for the harder ones | A mix: a cheap or local `fast` model, Claude for `strong` | [Mixing providers](#6-mixing-providers-to-cut-cost) |
 | Use a Claude, ChatGPT or opencode subscription on a server you run for yourself | `cli:claude`, `cli:codex`, `cli:opencode` | [CLI providers](#7-cli-providers-self-hosted-only) (self-hosted only) |
@@ -97,7 +98,7 @@ Use the inline form on platforms that cannot mount files, such as Fly.io secrets
 
 **3. Unset the model variables.** With a registry, `GRAFT_LLM_MODEL_FAST`, `GRAFT_LLM_MODEL_STRONG` and `GRAFT_LLM_REFUSAL_FALLBACK_MODEL` must be unset or empty. The `roles` replace them, and Graft refuses to start if they are set. **`.env.example` sets the first two**, so comment them out in your `.env`.
 
-**4. Put keys in variables, never in the file.** An entry names the variable that holds its key (`apiKeyEnv`, or `authTokenEnv` for a bearer token on an `anthropic` entry). The registry only ever holds the variable's name. Startup fails if a named variable is unset.
+**4. Put keys in variables, never in the file.** An entry names the variable that holds its key (`apiKeyEnv`, or `authTokenEnv` for a bearer token on an `anthropic` entry). The registry only ever holds the variable's name. Startup fails if a named variable is unset. A `vertex-ai` entry uses ADC instead and needs no API key.
 
 **5. Restart the server and the worker,** then [check that it worked](#check-that-it-works).
 
@@ -151,6 +152,48 @@ What to know:
 - **Reasoning effort** is not sent by default, because many models reject it. Set `capabilities: { effort: true }` to send it as `reasoning_effort`.
 - **Token limit parameter.** Graft sends `max_completion_tokens` to `api.openai.com` and `max_tokens` everywhere else. If a server wants the other one, set `maxTokensParam`.
 - **`OPENAI_*` variables are ignored** by Graft's client, except `OPENAI_CUSTOM_HEADERS`, which the OpenAI SDK always applies. Naming your key variable `OPENAI_API_KEY` is fine: it is only read because `apiKeyEnv` names it.
+
+### Gemini on Vertex AI with ADC
+
+Use `kind: vertex-ai` for Google's native Gen AI SDK (`@google/genai`) with
+Application Default Credentials, rather than Gemini's API-key-based OpenAI-compatible endpoint.
+Enable billing and the Vertex AI API (`aiplatform.googleapis.com`) in the project, and give the
+calling identity the Vertex AI User role (`roles/aiplatform.user`).
+
+For local development, create ADC (a regular `gcloud auth login` is not enough):
+
+```sh
+gcloud auth application-default login
+```
+
+In production, use the workload's attached service account or Workload Identity Federation.
+The SDK also accepts an ADC configuration file via `GOOGLE_APPLICATION_CREDENTIALS`; mount it
+outside the repository and make it available to the worker and any live evaluation process.
+No Gemini or Anthropic API key is needed.
+
+```yaml
+providers:
+  - id: gemini
+    kind: vertex-ai
+    project: my-gcp-project
+    location: global                  # or a region supported by the selected models
+roles:
+  fast: gemini/gemini-2.5-flash
+  strong: gemini/gemini-2.5-pro
+```
+
+Both `project` and `location` are required in the entry; `GOOGLE_CLOUD_PROJECT` and
+`GOOGLE_CLOUD_LOCATION` do not override them. `baseUrl`, `apiKeyEnv` and `authTokenEnv`
+are not accepted. The provider uses ADC even when `GEMINI_API_KEY` or `GOOGLE_API_KEY`
+is set, and `GOOGLE_VERTEX_BASE_URL` cannot redirect its requests.
+
+Set `GRAFT_LLM_PROVIDERS_FILE` or `GRAFT_LLM_PROVIDERS` as described above, unset the
+`GRAFT_LLM_MODEL_*` variables, and restart the worker. JSON-schema output and usage counts
+are supported; cached input and thinking tokens are included in usage, but explicit cache
+markers and Graft's reasoning-effort setting are not sent. Add `prices` using current Vertex AI
+rates if you want cost estimates or to run `pnpm eval --live` (there are no built-in Gemini prices).
+Run a live evaluation before assigning a model to a production role. ADC is resolved when a call
+is made; missing credentials or denied permissions produce `llm_auth`, not a startup error.
 
 ## 5. Local models
 
