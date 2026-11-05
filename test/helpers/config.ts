@@ -10,8 +10,21 @@ const { privateKey, publicKey } = generateKeyPairSync("rsa", {
 export const TEST_PRIVATE_KEY = privateKey;
 export const TEST_PUBLIC_KEY = publicKey;
 export const TEST_WEBHOOK_SECRET = "test-webhook-secret-0123456789";
-export const TEST_DATABASE_URL =
+const BASE_TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgres://graft:graft@localhost:55432/graft_test";
+
+/** Each Vitest worker has its own clone of the migrated database: see test/global-setup.ts. */
+function workerDatabaseUrl(base: string, poolId: string | undefined): string {
+  if (!poolId) return base;
+  const url = new URL(base);
+  url.pathname = `${url.pathname}_${poolId}`;
+  return url.toString();
+}
+
+export const TEST_DATABASE_URL = workerDatabaseUrl(
+  BASE_TEST_DATABASE_URL,
+  process.env.VITEST_POOL_ID,
+);
 export const FIXED_NOW = new Date("2026-10-14T12:00:00Z");
 export const fixedClock = { now: () => new Date(FIXED_NOW) };
 
