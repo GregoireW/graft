@@ -69,13 +69,15 @@ Graft checks that the card matches the diff and applies the policy. It does not 
 | --- | --- |
 | ❌ Don't merge yet | CI fails, an AI review found issues, the card does not match the diff, the PR text addresses AI reviewers, the change does something other than what was asked, or the policy blocks it |
 | ⚠️ Not without a human review | Risk `sensitive`, the card is unavailable or unverified, part of what was asked is missing, or a file is out of scope |
-| 🟡 Needs a normal review | Risk `logic` without a clean independent AI review, CI still running, or checks not read |
+| 🟡 Needs a normal review | Risk `logic` without a clean independent AI review, CI still running, no passed CI check on the head, or checks not read |
 | 🟢 Low risk | Risk `logic`, CI green, and an independent AI review that reports no issues |
 | 🟢 Safe to merge | Risk `trivial` and no CI check failing or running (a head with no checks at all counts: the line then says "no checks on this head") |
 
 A `sensitive` change always needs a human, whatever CI and AI reviews say. The line never changes what the policy requires: approvals stay the policy's decision.
 
 **CI** counts every check run and commit status on the head except Graft's own and the AI review checks: passed, failing (with names) and still running.
+
+"CI green" means at least one check passed and none is failing, running or unread. A head with no checks, or only skipped or cancelled ones, shows nothing about the change, so it gets a normal review whatever its risk. A repository without CI therefore never sees "Safe to merge" or "Low risk".
 
 **AI reviews** are the checks listed in `report.ai_reviews` in `graft.yaml`:
 
