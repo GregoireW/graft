@@ -69,6 +69,13 @@ flowchart LR
 | `CONSOLE_STATEMENT_TIMEOUT_MS` | `10000` | Per-query timeout. |
 | `HOST`, `PORT`, `LOG_LEVEL` | `127.0.0.1`, `3100`, `info` | The image sets `HOST=0.0.0.0`. |
 
+Application tables are resolved through the connection's PostgreSQL `search_path`, not a fixed
+`public` schema. Set the console role's search path to the schema used by Graft's migrations.
+Run `console/sql/readonly-role.sql` with that schema first in the owner's search path; it grants
+access to the current schema and sets the console role's per-database search path to match.
+The startup check rejects write access to tables in any schema on the effective search path,
+as well as the separate `pgboss` schema.
+
 ## Deploying on Coolify
 
 The console is a second Coolify resource in the same project as Graft. Deploying one never restarts the other.
