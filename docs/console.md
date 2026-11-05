@@ -101,7 +101,7 @@ Generate a client secret. The console asks for no scope: it only reads who signe
 5. Environment variables: `CONSOLE_DATABASE_URL` (the database's internal URL with the `graft_console` user and the password from step 1), `CONSOLE_PUBLIC_URL`, `CONSOLE_GITHUB_CLIENT_ID`, `CONSOLE_GITHUB_CLIENT_SECRET`, `CONSOLE_ALLOWED_USERS`, `CONSOLE_SESSION_SECRET`, and `CONSOLE_TIME_ZONE` if you want a default other than UTC. None of them is needed to build the image. Coolify makes every variable available at build time by default and turns those into Dockerfile `ARG`s, which stay in the image history. On the three secrets (`CONSOLE_DATABASE_URL`, `CONSOLE_GITHUB_CLIENT_SECRET`, `CONSOLE_SESSION_SECRET`), set **Build time** to not available.
 6. **Deploy.** The log shows `connected read-only` with `roleReadOnly: true`. If it says the role can write, `CONSOLE_DATABASE_URL` points at Graft's own user.
 
-Anywhere else, the image is `docker build -t graft-console console/`; it listens on port 3100 and its healthcheck calls `/readyz`.
+Anywhere else, use the [published image](deploy/README.md#published-images) `ghcr.io/mmornati/graft-console:<version>`, or build it with `docker build -t graft-console console/`; it listens on port 3100 and its healthcheck calls `/readyz`.
 
 ## Running it locally
 

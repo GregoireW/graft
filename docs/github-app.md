@@ -45,7 +45,7 @@ The human steps (sandbox org, test repositories, smee channel, registration, ins
 
 `github/app-manifest.json` is the source of truth; `test/unit/manifest.test.ts` pins it. Changing a permission means updating the test and this table together.
 
-| Permission / event | Level | Phase 0 use |
+| Permission / event | Level | Use |
 | --- | --- | --- |
 | `metadata` | read | Mandatory for every App; repository listing. |
 | `contents` | write (full manifest), read (report manifest) | Read `graft.yaml` from the base branch (step 5, now used) and commit data for trailers (step 2); `git.getCommit` for the head commit when a PR has more than 250 commits. Phase 1 step 5: in `guard_mode: enforce` only, create the revert's tree, commit and `graft-revert/<event id>` branch (`POST …/git/trees`, `…/git/commits`, `…/git/refs`) and delete that branch on crash recovery; read trees and commits (`GET …/git/trees/{sha}`, `…/git/commits/{sha}`) for the plan in every mode. Without `write`, `guard_mode` is effectively `report` and the guard comment says why. |
@@ -62,7 +62,7 @@ The human steps (sandbox org, test repositories, smee channel, registration, ins
 | `members` (organization) | read | Phase 1 step 2: verify that an approver is an active member of a team named in `graft.yaml` (`GET /orgs/{org}/teams/{team_slug}` and `…/memberships/{username}`). Read only; nothing about teams is stored. Without it every team constraint is unverified and never met. |
 | `membership`, `team` events | — | Phase 1 step 2: `membership` (added, removed) and `team` (deleted, edited, added or removed from a repository) re-evaluate the installation's open PRs that have a team constraint, once per five-minute window, after the window closes. The payload is a trigger: only the installation id is read. |
 
-**Deferred** (not requested in Phase 0):
+**Deferred** (not requested):
 
 - `actions: read` and the `workflow_run` event: not needed (the guard reads CI through check runs and statuses).
 - `workflows`: never. A revert of a change under `.github/workflows/` would need it; Graft leaves those to a human (`needs_human` / `workflow_files`).

@@ -27,7 +27,7 @@ Graft is pre-1.0. Only the latest commit on `main` receives security fixes.
 In scope: the code in this repository, its default configuration (`.env.example`,
 `docker-compose.yml`, `github/app-manifest.json`) and its CI workflow.
 
-Out of scope: vulnerabilities in GitHub, the Anthropic API or third-party dependencies (report
+Out of scope: vulnerabilities in GitHub, model providers or third-party dependencies (report
 those upstream), and issues that need an already-compromised host, App private key or webhook
 secret.
 

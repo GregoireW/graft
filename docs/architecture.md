@@ -18,7 +18,7 @@ flowchart LR
     WRK -->|"cards, verdicts, votes, metrics"| PG
     WRK -->|"read PRs, commits, files, reviews, graft.yaml"| API["GitHub REST API"]
     WRK -->|"check runs + one managed PR comment"| API
-    WRK -->|"intent writer + verifier"| LLM["Anthropic API"]
+    WRK -->|"intent writer + verifier"| LLM["Model provider<br/>(Claude API by default)"]
     CLI["CLI: pnpm graft, pnpm eval"] -->|"reports, pilots, offboarding"| PG
 ```
 
@@ -33,7 +33,7 @@ sequenceDiagram
     participant S as Server
     participant Q as Postgres and pg-boss
     participant W as Worker
-    participant AI as Anthropic API
+    participant AI as Model provider
     GH->>S: pull_request opened or synchronize
     S->>Q: store delivery, queue github.webhook
     S-->>GH: 202 enqueued
@@ -47,12 +47,13 @@ sequenceDiagram
     W->>GH: read PR, files, diff, linked issue
     W->>W: rule-based risk floor
     W->>AI: writer (fast model if the floor is trivial)
-    W->>AI: verifier (strong model, diff and card only)
+    W->>AI: verifier (strong model, diff, file context and card)
     W->>GH: graft/intent check (neutral), then intent section
-    Note over W: Policy (report only)
+    Note over W: Policy and review summary
     W->>Q: provenance_published and intent_published signals queue policy.evaluate
     W->>GH: read graft.yaml at the base branch commit
-    W->>GH: policy section and graft/policy check (always neutral)
+    W->>GH: read the head's CI and AI review checks
+    W->>GH: summary and policy sections, graft/policy check (neutral in report mode)
     Note over GH,W: Reviewers vote with reactions (polled every 15 min) or check-run buttons
 ```
 
@@ -74,7 +75,8 @@ Each publish happens under a per-change advisory lock (`withChangeLock`) after a
 - No prompt, diff, PR title or body, issue text or raw model output is ever logged, put in job data, or stored as such. Logs carry metadata only (model, purpose, token counts, duration, outcome). The DB holds paths, SHAs, numbers and the model's own prose (goal, behavior changes, reasons), nothing else. `test/unit/log-hygiene.test.ts` and I-INT-5 enforce this.
 - Token usage is logged per call and stored per card (`intent_cards.input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `llm_calls`, which describe the last run that produced the row); the daily per-repository budget is computed from the append-only `intent_spend` ledger (one row per model run), not from the card rows.
 - The writer and the verifier share one system prompt, stable per `PROMPT_VERSION`, and their user messages start with the same bytes (nonce, facts, file list, diff). Both the system prompt and that shared start (`userCachePrefix`) are sent with `cache_control: ephemeral`, so the verifier reads the diff from the cache the writer wrote seconds earlier. Title, description and issue (writer) and file context and card (verifier) come after the breakpoint.
-- All tests use the fake LLM (`src/llm/fake.ts`) or the real client with an injected `fetch`. No test reaches the Anthropic API.
+- A server-side provider registry (`src/llm/registry.ts`, [Choosing a model provider](model-providers.md)) points the writer and the verifier at any provider; without it they use the Claude API. Prompt caching applies where the provider supports it.
+- All tests use the fake LLM (`src/llm/fake.ts`) or the real client with an injected `fetch`. No test reaches a model provider.
 - Model text reaches markdown only through `escapeProse` and `codeSpan` (`src/github/markdown.ts`).
 
 Reviewer feedback on cards (reactions and check-run buttons, and the one exception to the payload rule) is described in [features/intent-cards.md](features/intent-cards.md#feedback-internals).
@@ -83,11 +85,15 @@ Reviewer feedback on cards (reactions and check-run buttons, and the one excepti
 
 **Managed PR comment.** Graft keeps exactly one comment per PR, created once and then updated in place (it is not pinned through the API). The contract lives in the doc comment of [`src/github/managed-comment.ts`](../src/github/managed-comment.ts), which steps 3 and 5 reuse:
 
-- The body starts with `<!-- graft:managed-comment v1 -->`, then `## Graft`, then one block per section, `<!-- graft:section:<name>:start -->` ... `<!-- graft:section:<name>:end -->`, in the order `intent`, `provenance`, `policy`; unknown sections found in an existing body are kept verbatim after them. A `<sub>` footer closes it.
-- Each module writes only its own section through `upsertManagedSection`; every other section is preserved byte for byte. Section markdown may not contain `<!-- graft:` and is capped at 20,000 characters.
+- The body starts with `<!-- graft:managed-comment v1 -->`, then `## Graft`, then one block per section, `<!-- graft:section:<name>:start -->` ... `<!-- graft:section:<name>:end -->`, in the order `summary`, `intent`, `provenance`, `policy`; unknown sections found in an existing body are kept verbatim after them. A `<sub>` footer closes it.
+- The policy job owns two sections, `summary` and `policy`, and writes them in one request. Each module writes only its own sections through `upsertManagedSection`; every other section is preserved byte for byte. Section markdown may not contain `<!-- graft:` and is capped at 20,000 characters.
 - Finding the comment: the stored `changes.graft_comment_id` if it still exists and is ours, else the first of the PR's comments that is ours, else a new comment. **Ours** means the marker is the first line **and** `performed_via_github_app.id` equals `GITHUB_APP_ID`. Because D13 (that field being present on REST comment responses) is unverified against real GitHub, there is a fallback: when `GITHUB_APP_SLUG` is set, a comment authored by the bot login `<slug>[bot]` (type `Bot`) with the marker also counts. A human pasting the marker is never adopted.
 - **`withChangeLock(db, changeId, fn)`** (`src/db/locks.ts`): every writer of the managed comment or of per-change GitHub output (check runs) must hold this per-change advisory lock, and must store the comment id in `changes.graft_comment_id` inside the same transaction. The lock is a transaction that holds a pooled connection while requests are in flight, so **do no slow work (LLM calls, diff fetches) inside `withChangeLock`; compute first, then lock, re-check freshness (head SHA and `pr_updated_at`) and publish.**
 - **`PermanentJobError(message, reason)`** (`src/queue/errors.ts`): a job throws it when a retry cannot help (deleted PR, lost permission, repo mismatch). The worker logs it and completes the job. `toJobError` in `src/github/errors.ts` maps Octokit errors: 404/410/401/non-rate-limit 403/422 are permanent; 429, rate-limit 403 and 5xx/network errors are retried. It never returns the original error: Octokit errors carry the request body (a rendered card is model output) and pino and pg-boss serialize it, so `sanitizeError` (`src/queue/errors.ts`) rebuilds them as metadata only (name, short message, status, method, route template, request id). The worker sanitizes again before logging and rethrowing, so a job's `pgboss.job.output` and the logs never hold request or response bodies (I-E2E-4).
+
+## Review summary and status card
+
+`src/modules/policy/summary.ts` is pure: from the card, the policy verdict, the provenance and the head's CI and AI review checks it writes the `summary` section. With `GRAFT_PUBLIC_URL` set, the server also answers `GET /summary-card/<token>.svg`: the token holds the card's words, signed with a key derived from the webhook secret, so the route reads no database. See [Review summary](features/review-summary.md).
 
 ## Retention of webhook payloads (step 6)
 

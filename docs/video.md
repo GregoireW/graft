@@ -20,11 +20,11 @@ A second video, [What a reviewer sees](video-reviewer-tour.md), walks through fo
 | Who is involved | The agent writes the code, the reviewer decides what merges, the platform owner sets the rules. GitHub stays as it is. | [MVP spec](spec/mvp-spec.md) |
 | How it works | Signed webhook, server, queue, worker, writer and verifier, check runs and the managed comment. | [Architecture](architecture.md) |
 | Who wrote it | `Graft-*` trailers, the commit hook, bot accounts and agent co-authors. | [Provenance](features/provenance.md) |
-| What it claims | The intent card, and a verifier that sees only the diff, the file list and the card. | [Intent cards](features/intent-cards.md) |
+| What it claims | The intent card, and a verifier that never sees the pull request text. | [Intent cards](features/intent-cards.md) |
 | The risk floor | Fixed rules set `trivial`, `logic` or `sensitive`; a model can only raise the class. | [Intent cards](features/intent-cards.md) |
 | The policy | `graft.yaml` from the base branch only: block wins, then require, then approve. | [Policy](features/policy.md) |
-| A new way of working | Reviewers read the card before the diff; agents keep working, plus a few trailers. | [Pilot onboarding](pilots/onboarding.md) |
-| Privacy and shadow mode | What is never stored, what is stored, what is sent to Anthropic; neutral checks and the 90% gate. | [Pilots and the gate](features/pilots-and-gate.md) |
+| A new way of working | Reviewers read the verdict and the card before the diff; agents keep working, plus a few trailers. | [Pilot onboarding](pilots/onboarding.md) |
+| Privacy and report mode | What is never stored, what is stored, what is sent to the model provider; neutral checks, and enforcement that stays off until an operator turns it on. | [Pilots and the gate](features/pilots-and-gate.md) |
 
 ## About the video
 

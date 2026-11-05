@@ -43,8 +43,8 @@ It sits on existing GitHub repositories with nothing to migrate.
 ## Operating Context
 
 - Installed as a GitHub App; a Fastify server verifies and deduplicates signed webhooks and enqueues jobs in Postgres 17
-  (pg-boss); a worker re-reads everything from the GitHub API, calls the Anthropic API (writer and verifier) and publishes
-  three `neutral` check runs (`graft/provenance`, `graft/intent`, `graft/policy`) and one managed comment.
+  (pg-boss); a worker re-reads everything from the GitHub API, calls the configured model provider (writer and verifier) and publishes
+  three check runs, `neutral` in report mode (`graft/provenance`, `graft/intent`, `graft/policy`) and one managed comment.
 - Provenance comes from `Graft-Agent`, `Graft-Model`, `Graft-Task`, `Graft-Session` git trailers (or the PR description),
   bot accounts, configured logins and agent co-authors.
 - Policy is `graft.yaml` read from the base branch only; block wins, then require, then approve; a CLI
@@ -55,10 +55,10 @@ It sits on existing GitHub repositories with nothing to migrate.
 
 ## Capabilities and Constraints
 
-- **Phase 0, shadow mode.** Graft reports and never enforces: every check concludes `neutral`, a "would approve" is not
-  an approval, team membership is not checked. Branch protection stays as it is.
-- **Phase 1, steps 1 to 4 built, report mode by default.** Modes and safety rails, approvals Graft can enforce,
-  break-glass with an audit log, and post-merge guard detection are merged. Nothing enforces until an operator
+- **Report mode by default.** Graft reports: every check concludes `neutral`, a "would approve" is not an approval, and
+  branch protection stays as it is.
+- **Phase 1 built.** Modes and safety rails, approvals Graft can enforce, break-glass with an audit log, the post-merge
+  guard with revert pull requests and the MCP server are merged. Nothing enforces until an operator
   raises `GRAFT_MODE_CEILING` (default `report`) and sets a repository to enforce; see `docs/features/modes.md` and
   `docs/features/guard.md`. Not built: revert PRs, the MCP server, and the security review, pilots and gate.
 - Privacy: no file contents, diffs, PR titles or bodies are stored or logged; rows hold ids, numbers, SHAs, paths and

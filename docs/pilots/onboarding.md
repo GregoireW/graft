@@ -5,8 +5,8 @@ This is the runbook for the 60-minute onboarding session of one pilot team (see 
 ## 1. Prerequisites
 
 - A GitHub **org admin** to install the App, a **repo admin** for each pilot repository, and the pilot's **security owner** in the session.
-- The **pilot agreement** is signed: it covers consent for diffs, PR text and linked issue text to be sent to Anthropic for card generation, the retention terms for that data (section 4), and, if the team agrees, the optional export of a sample of merged PRs to the encrypted evaluation store (see the [labeling guide](../phase-0/labeling-guide.md)).
-- A **Graft deployment** is running (server and worker, migrated to the latest schema) with `ANTHROPIC_API_KEY` set and `GRAFT_LLM_DAILY_TOKEN_BUDGET` chosen. Without a key the service still runs and every card shows as unavailable.
+- The **pilot agreement** is signed: it covers consent for diffs, PR text and linked issue text to be sent to the deployment's model provider (Anthropic by default) for card generation, the retention terms for that data (section 4), and, if the team agrees, the optional export of a sample of merged PRs to the encrypted evaluation store (see the [labeling guide](../phase-0/labeling-guide.md)).
+- A **Graft deployment** is running (server and worker, migrated to the latest schema) with a [model provider](../model-providers.md) configured (`ANTHROPIC_API_KEY`, or a provider registry) and `GRAFT_LLM_DAILY_TOKEN_BUDGET` chosen. Without one the service still runs and every card shows as unavailable.
 
 ## 2. What Graft reads
 
@@ -36,9 +36,9 @@ Through the GitHub API, with the permissions in the [README](../../README.md), s
 
 Webhook payloads, which include PR titles and bodies, sit in the job queue (pg-boss) only briefly: a `github.webhook` job is deleted **1 hour after it completes or finally fails**. A job that cannot run, for example because the worker is down, stays queued with its payload until pg-boss deletes it (14 days, but only while a worker is running: pg-boss maintenance runs in the worker, so with the worker down nothing is deleted). Other jobs keep ids, numbers and, for button votes, the voter's login for 7 days after they finish. Logs carry metadata only (ids, counts, codes), never PR text, voter logins or model output.
 
-## 4. Data sent to Anthropic
+## 4. Data sent to the model provider
 
-For card generation only, Graft sends the diff, the PR title and description and the linked issue text to the Anthropic API. How long Anthropic keeps that data depends on the organisation's terms (standard retention or zero data retention, decided in HUMAN-TODO step 3). The retention terms must be named in the pilot agreement.
+For card generation only, Graft sends the diff, the PR title and description and the linked issue text to the deployment's [model provider](../model-providers.md): the Anthropic API by default, or the providers the operator lists in the registry (for example OpenAI, Google Vertex AI or a local model). How long the provider keeps that data depends on the organisation's terms with it (with Anthropic: standard retention or zero data retention, decided in HUMAN-TODO step 3). The pilot agreement must name the provider and its retention terms. Changing provider therefore means checking the agreement first.
 
 ## 5. Install on selected repositories only
 
@@ -112,5 +112,5 @@ pnpm graft pilot purge --installation 123 --confirm acme --dry-run
 2. Confirm that `installations.deleted_at` is set for the installation.
 3. Preview, then delete: `pnpm graft pilot purge --installation <id> --confirm <account login> --dry-run`, then the same command without `--dry-run`. This deletes every row of the installation (the foreign keys cascade from `installations`), its `webhook_deliveries` and the pg-boss jobs that name it, and writes one `pilot_purges` row (installation id, counts, time; no login).
 4. Run `pnpm eval purge --set <dir> --confirm <setId>` on **every labeler machine** that holds an evaluation set for the pilot.
-5. If the agreement says so, ask Anthropic to delete the data under the organisation's terms.
+5. If the agreement says so, ask the model provider to delete the data under the organisation's terms.
 6. Record the `pilot_purges` id in the pilot agreement.

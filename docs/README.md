@@ -41,7 +41,7 @@ New to Graft? Start with the [two-and-a-half-minute video](video.md): how it wor
 
 | Page | What is in it |
 | --- | --- |
-| [pilots/onboarding.md](pilots/onboarding.md) | Onboarding a pilot team: what Graft reads and stores, data sent to Anthropic, shadow mode, weekly ritual, offboarding. |
+| [pilots/onboarding.md](pilots/onboarding.md) | Onboarding a pilot team: what Graft reads and stores, data sent to the model provider, shadow mode, weekly ritual, offboarding. |
 | [pilots/phase-1-runbook.md](pilots/phase-1-runbook.md) | The Phase 1 rollout, per repository: report mode, the watch, enforcing the policy, the guard and MCP, each stage's go/no-go criteria from the Phase 1 gate report, and its rollback. |
 | [phase-1/reviews/step-7-security-review.md](phase-1/reviews/step-7-security-review.md) | The Phase 1 security review of everything that writes, with its verdict for pilot enforcement. |
 | [pilots/](pilots/) | Starter policies: [graft.service.yaml](pilots/graft.service.yaml), [graft.platform.yaml](pilots/graft.platform.yaml), [graft.library.yaml](pilots/graft.library.yaml). |

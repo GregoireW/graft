@@ -16,7 +16,7 @@
 
 ## Why Graft
 
-Coding agents open pull requests faster than people can review them, and a PR description written by the agent being reviewed is not evidence of anything. Graft is a GitHub App and service that puts four answers on every pull request, in one comment and three check runs:
+Coding agents open pull requests faster than people can review them, and a PR description written by the agent being reviewed is not evidence of anything. Graft is a GitHub App and service that opens every pull request's comment with a verdict a reviewer can act on (the five gates, and what to check before merging), and backs it with four answers, in one comment and three check runs:
 
 1. **Who wrote it**: an agent (which one, which model, which task, which session) or a human.
 2. **What it claims to do**: an *intent card* with the goal, the observable behavior changes and the edits the goal does not explain.
@@ -30,12 +30,13 @@ Coding agents open pull requests faster than people can review them, and a PR de
 
 | | |
 | --- | --- |
+| **Review summary**<br/>The top of the comment: a verdict in a colored box, five gates (intent, risk, CI, AI review, approvals) and up to three things to check before merging. With `GRAFT_PUBLIC_URL`, the gates become a status card image. Graft never calls a `sensitive` change safe. [More](docs/features/review-summary.md) | **Container images**<br/>Each release publishes `ghcr.io/mmornati/graft` and `ghcr.io/mmornati/graft-console`, tagged with the version. [More](docs/deploy/README.md#published-images) |
 | **Provenance**<br/>`Graft-Agent`, `Graft-Model`, `Graft-Task` and `Graft-Session` git trailers (or the PR description), bot accounts, configured logins and agent co-authors decide "agent or human". [More](docs/features/provenance.md) | **Intent cards**<br/>A writer model drafts the card from the title, description, linked issue and diff; a verifier sees only the diff, the file list and the card. Untrusted PR text is fenced as data. [More](docs/features/intent-cards.md) |
 | **Risk floor**<br/>`trivial`, `logic` or `sensitive` from fixed rules over paths, size, deleted tests, CI, dependency, infra, auth and migration files. The model can only raise the class. [More](docs/features/intent-cards.md) | **Policy engine, report-only**<br/>`graft.yaml` from the base branch only: block wins, then require, then approve. A `graft/policy` check and a policy section; a CLI and a CI lint. [More](docs/features/policy.md) |
 | **Evaluation set**<br/>`pnpm eval`: encrypted pilot case sets outside the repo, blind labeling, Cohen's kappa, fake and live runs, and a synthetic set with a saved baseline in CI. [More](docs/features/evaluation.md) | **Pilots and the gate**<br/>Onboarding kit, verified-reviewer votes, a Wilson-interval Phase 0 gate report, review-time baseline, daily rollup, incidents and offboarding. [More](docs/features/pilots-and-gate.md) |
 | **Modes, approvals and break-glass**<br/>Per-repository `policy_mode`, `guard_mode` and `mcp_write` under a server ceiling, and a write allow-list that refuses anything a mode does not permit. In enforce mode `graft/policy` counts real approvals (write access, current head, verified teams); a maintainer's `graft:break-glass` label bypasses it for one commit, and every bypass is audited. [More](docs/features/modes.md) | **Post-merge guard and revert PRs**<br/>Watches `main`'s CI, names the culprit commit once a failure is confirmed, and in enforce mode opens a labelled revert PR built from blob SHAs, without reading code. Auto-merge of `trivial` or `logic` reverts is opt-in, never for `sensitive`. [More](docs/features/guard.md) |
 | **MCP server**<br/>`get_status`, `get_policy`, `report_provenance` and `open_change` at `/mcp` for agents, with per-repository tokens stored as hashes. Reported provenance can only tighten a verdict; `open_change` needs `mcp_write`. [More](docs/features/mcp.md) | **Gates from data**<br/>`pnpm graft gate report` decides the Phase 0 gate (card accuracy) and the Phase 1 gate (PRs merged with no human, review minutes, breakages caught, escaped defects), measured from enforce-mode rows and previewed from report mode. [More](docs/features/pilots-and-gate.md) |
-| **Any model provider**<br/>The Claude API by default, or a server-side provider registry: Anthropic-format gateways, OpenAI-compatible APIs (OpenAI, OpenRouter, Mistral, DeepSeek, Gemini), local models (Ollama, vLLM, LM Studio), isolated `claude`, `codex` and `opencode` CLIs for self-hosted installs, and per-installation Copilot billing. [More](docs/model-providers.md) | **Operator console**<br/>An optional, read-only console: a daily journal, every PR's record, what needs a human, the gate, the token budget, the job queue and the models that wrote the cards. [More](docs/console.md) |
+| **Any model provider**<br/>The Claude API by default, or a server-side provider registry: Anthropic-format gateways, OpenAI-compatible APIs (OpenAI, OpenRouter, Mistral, DeepSeek, Gemini), Gemini on Vertex AI with Application Default Credentials, local models (Ollama, vLLM, LM Studio), isolated `claude`, `codex` and `opencode` CLIs for self-hosted installs, and per-installation Copilot billing. [More](docs/model-providers.md) | **Operator console**<br/>An optional, read-only console: a daily journal, every PR's record, what needs a human, the gate, the token budget, the job queue and the models that wrote the cards. [More](docs/console.md) |
 | **Privacy by design**<br/>No file contents, diffs, PR titles or bodies are stored or logged: only paths, SHAs, numbers and the model's own prose. [More](docs/architecture.md#contracts) | **Live e2e scenarios**<br/>`pnpm graft e2e` proves the fakes' assumptions against real GitHub in a guarded sandbox repository, or fully offline. [More](docs/e2e.md) |
 
 ## How it works
@@ -93,63 +94,103 @@ Then run the tests (`pnpm test:unit` needs nothing running; `pnpm test` also nee
 
 ## What a reviewer sees
 
-A fictional pull request in a fictional `acme` organisation: an agent adds a login rate limiter, the shipped [example policy](docs/examples/graft.yaml) applies, one reviewer has approved. This is the managed comment as the renderers in `src/modules/*/render.ts` and `src/github/managed-comment.ts` produce it (the hidden section markers are left out):
+A fictional pull request in a fictional `acme` organisation: an agent adds a login rate limiter, the shipped [example policy](docs/examples/graft.yaml) applies, CI passed, one reviewer has approved. Below the line is the managed comment as Graft's renderers produce it (the hidden section markers are left out). Open the folds to see the details. For a real one, see [any recent pull request of this repository](https://github.com/mmornati/graft/pull/71).
 
-> **Graft**
->
-> #### Intent
->
-> **Goal:** Limit failed login attempts to 5 per account per 15 minutes and lock the account for 15 minutes after that.
->
-> **Risk:** `sensitive` · rules `sensitive` · writer `logic` · verifier `logic`
->
-> **Behavior changes**
->
-> - The sixth failed login for an account within 15 minutes returns 429 with a Retry-After header.
-> - A successful login resets the failure counter for that account.
->
-> **Out-of-scope edits:** none
->
-> <details><summary>How this card was made</summary>
->
-> - Rules set the floor to `sensitive`: authentication, security or secrets (`src/auth/rate-limit.ts`, `src/auth/login.ts`)
-> - Writer `claude-sonnet-5-5`; verifier `claude-sonnet-5-5` supported 3 of 3 claims
-> - Inputs: PR title and description, issue #128, 3 of 3 files in full
-> - Model usage: 7,421 input tokens, 913 output tokens, 2 calls
->
-> </details>
->
-> Card `0b6f3a52` · head `4c9e1f2` · Rate this card with 👍 or 👎 on this comment, or with the buttons on the `graft/intent` check.
->
-> #### Provenance
->
-> | | |
-> | --- | --- |
-> | **Authored by** | Agent (Graft trailers) |
-> | **Agent** | `claude-code` |
-> | **Model** | `claude-sonnet-5-5` |
-> | **Task** | `#128` |
-> | **Session** | [agents.example.com](https://agents.example.com/session/7f3a) |
-> | **Opened by** | `acme-agent[bot]` |
->
-> Head `4c9e1f2` · 2 commits, 2 with Graft trailers.
->
-> #### Policy
->
-> **Would require 2 humans (1 from `@acme/security`)** · report only
->
-> **In enforce mode this check would be:** `failure`, needs approvals: 1 more from anyone, 1 from `@acme/security`.
->
-> - Rule 3 infra-and-auth: paths match `src/auth/login.ts`, `src/auth/rate-limit.ts`, `test/auth/rate-limit.test.ts`
-> - Rule 4 agent-sensitive: risk `sensitive` (card), author agent `claude-code`
->
-> **Approvals so far:** 1 on this head (`dana`); 1 counts (write access).
->
-> Policy `graft.yaml` on `main` at `9d8c7b6` · head `4c9e1f2` · Graft mode: report. Graft approves and blocks nothing here.
->
-> <sub>Maintained by Graft; edits to this comment are overwritten.</sub>
+---
 
-The same information appears in the `graft/provenance`, `graft/intent` (with "Card is accurate" / "Card is wrong" buttons) and `graft/policy` check runs. When the verifier disagrees, the card shows a warning listing the unsupported claims and the risk is at least `logic`.
+**Graft**
+
+> [!WARNING]
+> **Needs human review** · 1 thing to check · 1 approval needed
+
+| 🎯 Intent | 🛡️ Risk | 🧪 CI | 🤖 AI review | 👥 Approvals |
+| :---: | :---: | :---: | :---: | :---: |
+| ✅ **Matches** | 🟠 **Sensitive** | ✅ **3/3 passed** | ➖ **None** | 🟠 **1/2** |
+
+**Before you merge**
+
+- 🛡️ **Sensitive files** · authentication, security or secrets (`src/auth/login.ts`, `src/auth/rate-limit.ts`)
+
+<details><summary>Why this verdict</summary>
+
+- **Matches the intent?** ✅ **Yes.** Does what issue #128 asks.
+- **Safe to merge?** ⚠️ **Not without a human review.** Risk `sensitive`: Changes login behavior. **CI:** all 3 passed. **Graft:** 3 of 3 claims supported.
+- **Human review:** **2 approvals needed** (1 from `@acme/security`) · 1 so far · *report mode: Graft blocks nothing*
+
+</details>
+
+---
+
+**Goal:** Limit failed login attempts to 5 per account per 15 minutes and lock the account for 15 minutes after that.
+
+<details><summary>🎯 What was asked vs what was done · 2 done</summary>
+
+- ✅ Limit failed logins to 5 per account per 15 minutes.
+- ✅ Lock the account for 15 minutes after the limit.
+
+</details>
+
+<details><summary>📝 Behavior changes · 2</summary>
+
+- The sixth failed login for an account within 15 minutes returns 429 with a Retry-After header.
+- A successful login resets the failure counter for that account.
+
+</details>
+
+<details><summary>🔍 How this card was made</summary>
+
+- **Risk:** `sensitive` · rules `sensitive` · writer `logic` · verifier `logic`
+- Rules set the floor to `sensitive`: authentication, security or secrets (`src/auth/login.ts`, `src/auth/rate-limit.ts`)
+- Writer `claude-sonnet-5-5`; verifier `claude-sonnet-5-5` supported 3 of 3 claims
+- Inputs: PR title and description, issue #128, 3 of 3 files in full
+- Model usage: 7,421 input tokens, 913 output tokens, 2 calls
+
+</details>
+
+Card `0b6f3a52` · head `4c9e1f2` · Rate this card with 👍 or 👎 on this comment, or with the buttons on the `graft/intent` check.
+
+<details><summary>🧬 Provenance · written by an agent (Graft trailers)</summary>
+
+| | |
+| --- | --- |
+| **Authored by** | Agent (Graft trailers) |
+| **Agent** | `claude-code` |
+| **Model** | `claude-sonnet-5-5` |
+| **Task** | `#128` |
+| **Session** | [agents.example.com](https://agents.example.com/session/7f3a) |
+| **Opened by** | `acme-agent[bot]` |
+
+Head `4c9e1f2` · 2 commits, 2 with Graft trailers.
+
+</details>
+
+<details><summary>👥 Policy · why 2 humans (report only)</summary>
+
+**Would require 2 humans (1 from `@acme/security`)** · report only
+
+**In enforce mode this check would be:** `failure`, needs approvals: 1 from `@acme/security`, 1 more from anyone.
+
+- Rule 3 infra-and-auth: paths match `src/auth/login.ts`, `src/auth/rate-limit.ts`, `test/auth/rate-limit.test.ts`
+- Rule 4 agent-sensitive: risk `sensitive` (card), author agent `claude-code`
+
+**Approvals so far:** 1 on this head (`dana`); 1 counts (write access).
+
+Policy `graft.yaml` on `main` at `9d8c7b6` · head `4c9e1f2` · Graft mode: report. Graft approves and blocks nothing here.
+
+</details>
+
+<sub>Maintained by Graft; edits to this comment are overwritten.</sub>
+
+---
+
+With [`GRAFT_PUBLIC_URL`](docs/features/review-summary.md#the-status-card) set, the table of gates is drawn as a status card that follows the reader's GitHub theme:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/review-summary/acme-card-dark.svg">
+  <img alt="Needs human review: 1 thing to check · 1 approval needed. Intent: Matches. Risk: Sensitive. CI: 3/3 passed. AI review: None. Approvals: 1/2." src="docs/assets/review-summary/acme-card-light.svg" width="720">
+</picture>
+
+The `graft/provenance`, `graft/intent` (with "Card is accurate" / "Card is wrong" buttons) and `graft/policy` check runs carry the full text. When the verifier disagrees, the verdict is "Don't merge yet", the card shows a warning listing the unsupported claims and the risk is at least `logic`. See [Review summary](docs/features/review-summary.md).
 
 ## Documentation
 
@@ -157,7 +198,7 @@ The same information appears in the `graft/provenance`, `graft/intent` (with "Ca
 | --- | --- |
 | Install, run, test | [Getting started](docs/getting-started.md) · [Choosing a model provider](docs/model-providers.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) |
 | Real GitHub App | [Registration, smee, permissions](docs/github-app.md) |
-| Features | [Provenance](docs/features/provenance.md) · [Intent cards](docs/features/intent-cards.md) · [Policy](docs/features/policy.md) ([graft.yaml reference](docs/graft-yaml.md)) · [Modes](docs/features/modes.md) · [Post-merge guard](docs/features/guard.md) · [MCP server](docs/features/mcp.md) · [Evaluation](docs/features/evaluation.md) · [Pilots and gates](docs/features/pilots-and-gate.md) |
+| Features | [Review summary](docs/features/review-summary.md) · [Provenance](docs/features/provenance.md) · [Intent cards](docs/features/intent-cards.md) · [Policy](docs/features/policy.md) ([graft.yaml reference](docs/graft-yaml.md)) · [Modes](docs/features/modes.md) · [Post-merge guard](docs/features/guard.md) · [MCP server](docs/features/mcp.md) · [Evaluation](docs/features/evaluation.md) · [Pilots and gates](docs/features/pilots-and-gate.md) |
 | Videos | [Graft, explained](docs/video.md) · [What a reviewer sees](docs/video-reviewer-tour.md) · [Enforce mode, step by step](docs/video-enforce-tour.md) |
 | Live tests | [E2E scenarios](docs/e2e.md) · [Runbook](docs/e2e/runbook.md) |
 | Internals | [Architecture and data model](docs/architecture.md) · [Decisions and deviations by step](docs/decisions.md) |
@@ -198,6 +239,16 @@ All seven steps are built, reviewed and merged (release `v0.1.0`). **Everything 
 
 The Phase 1 reviews are in [docs/phase-1/reviews](docs/phase-1/reviews). Real GitHub behavior of the new writes (revert trees, auto-merge, `open_change`, label events) is untested outside fakes: the real-GitHub checks and smoke tests are listed in the [Phase 1 HUMAN-TODO](docs/phase-1/HUMAN-TODO.md).
 
+### Since Phase 1
+
+| Release | What it adds |
+| --- | --- |
+| `v0.2.0` | The [review summary](docs/features/review-summary.md), any [model provider](docs/model-providers.md) through a server-side registry, the read-only [operator console](docs/console.md), `report.language` and `report.ai_reviews` in `graft.yaml`, and `GRAFT_ALLOWED_ACCOUNTS` for an App installed on several accounts. |
+| `v0.2.1` | A more visual summary with an optional [status card](docs/features/review-summary.md#the-status-card), and [published container images](docs/deploy/README.md#published-images). |
+| `v0.2.2` | [Gemini on Vertex AI](docs/model-providers.md#gemini-on-vertex-ai-with-adc) with Application Default Credentials. |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ### What comes next
 
 No more code steps are planned for Phase 1. What is left is done by people: register the production App with the chosen manifest, run the HUMAN-TODO smoke tests and real-GitHub checks, recruit the pilot teams (2 for Phase 0, 5 for Phase 1), take each one through the [runbook](docs/pilots/phase-1-runbook.md), and call the Phase 0 and Phase 1 gates from `pnpm graft gate report`. Graft reaches `v1.0.0` when both gates pass. Task grouping and candidate ranking (Phase 2) are out of scope until then.
@@ -217,9 +268,9 @@ src/
   db/         Kysely client, schema, migrations, per-change lock
   queue/      pg-boss wrapper and worker
   webhooks/   receiver, handler registry, dispatch job
-  http/       health and readiness routes
+  http/       health and readiness routes, the status card route
   github/     Octokit factory, managed comment, markdown safety
-  llm/        model-client interface, provider registry and router, Anthropic, OpenAI-compatible, CLI and Copilot clients, fake
+  llm/        model-client interface, provider registry and router, Anthropic, OpenAI-compatible, Vertex AI, CLI and Copilot clients, fake
   policy/     graft.yaml schema, safe YAML parse, evaluator, loader
   modules/    installations, changes, provenance, intent, policy, pilot, modes, audit, guard, mcp
   eval/       the evaluation tool
