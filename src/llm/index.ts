@@ -12,6 +12,7 @@ import type { CliKind, LlmProvider, LlmRegistry } from "./registry.js";
 import { createRouterLlm } from "./router.js";
 import type { LlmClient } from "./types.js";
 import { unconfiguredLlm } from "./unconfigured.js";
+import { createVertexAiLlm, vertexAiHost } from "./vertex-ai.js";
 
 export { anthropicCredential, createAnthropicLlm, isClaudeApi } from "./anthropic.js";
 export { type AnthropicFederation, FederationError } from "./federation.js";
@@ -27,6 +28,7 @@ export {
 export { createRouterLlm, registryCostOf } from "./router.js";
 export * from "./types.js";
 export { unconfiguredLlm } from "./unconfigured.js";
+export { createVertexAiLlm } from "./vertex-ai.js";
 
 /**
  * With a provider registry, a router over one client per provider. Without one, exactly what Graft
@@ -114,9 +116,11 @@ function describeProvider(p: LlmProvider) {
         ? "local"
         : p.kind === "copilot"
           ? "github"
-          : "default",
+          : p.kind === "vertex-ai"
+            ? vertexAiHost(p.location)
+            : "default",
     ...(p.kind === "copilot" ? { installations: p.installations.size } : {}),
-    auth: p.sharedCredential ? "shared" : "own",
+    auth: p.kind === "vertex-ai" ? "adc" : p.sharedCredential ? "shared" : "own",
   };
 }
 
@@ -127,6 +131,14 @@ function providerClient(
   deps: LlmDeps,
 ): LlmClient {
   switch (p.kind) {
+    case "vertex-ai":
+      return createVertexAiLlm({
+        project: p.project,
+        location: p.location,
+        maxRetries: config.llmMaxRetries,
+        capabilities: p.capabilities,
+        log,
+      });
     case "copilot":
       return createCopilotLlm({
         capabilities: p.capabilities,

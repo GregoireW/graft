@@ -69,6 +69,15 @@ const openAiCompatibleEntry = z
   })
   .strict();
 
+const vertexAiEntry = z
+  .object({
+    ...common,
+    kind: z.literal("vertex-ai"),
+    project: z.string().regex(/^[a-z0-9][a-z0-9.:-]{0,127}$/, "must be a Google Cloud project"),
+    location: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/, "must be a Google Cloud location"),
+  })
+  .strict();
+
 /** CLI kinds: a coding agent's command-line tool on this machine (self-hosted only). */
 export const CLI_KINDS = ["cli:claude", "cli:codex", "cli:opencode"] as const;
 export type CliKind = (typeof CLI_KINDS)[number];
@@ -122,13 +131,14 @@ const entrySchema = z.discriminatedUnion(
   [
     anthropicEntry,
     openAiCompatibleEntry,
+    vertexAiEntry,
     cliEntry("cli:claude"),
     cliEntry("cli:codex"),
     cliEntry("cli:opencode"),
     copilotEntry,
   ],
   {
-    error: `kind must be "anthropic", "openai-compatible" or ${CLI_KINDS.map((k) => `"${k}"`).join(", ")}`,
+    error: `kind must be "anthropic", "openai-compatible", "vertex-ai", "copilot" or ${CLI_KINDS.map((k) => `"${k}"`).join(", ")}`,
   },
 );
 
@@ -184,6 +194,15 @@ export interface CliProvider extends ProviderCommon {
   readonly sharedCredential: false;
 }
 
+export interface VertexAiProvider extends ProviderCommon {
+  readonly kind: "vertex-ai";
+  readonly project: string;
+  readonly location: string;
+  readonly baseUrl: undefined;
+  /** ADC is resolved by Google's SDK, never from another provider's credential. */
+  readonly sharedCredential: false;
+}
+
 /**
  * GitHub Copilot through `@github/copilot-sdk`, billed to the installation that owns the pull
  * request (an installation token with `copilot_requests: write`). Multi-tenant, so allowed when
@@ -202,6 +221,7 @@ export interface CopilotProvider extends ProviderCommon {
 export type LlmProvider =
   | AnthropicProvider
   | OpenAiCompatibleProvider
+  | VertexAiProvider
   | CliProvider
   | CopilotProvider;
 
@@ -216,6 +236,12 @@ export type Deployment = "hosted" | "self-hosted";
 export const DEFAULT_CAPABILITIES: Record<ProviderKind, LlmCapabilities> = {
   anthropic: FULL_CAPABILITIES,
   "openai-compatible": Object.freeze({
+    nativeSchema: true,
+    promptCache: false,
+    effort: false,
+    reportsUsage: true,
+  }),
+  "vertex-ai": Object.freeze({
     nativeSchema: true,
     promptCache: false,
     effort: false,
@@ -267,6 +293,7 @@ export interface LlmRegistry {
 const MODEL_PATTERN: Record<ProviderKind, { re: RegExp; message: string }> = {
   anthropic: { re: MODEL_ID, message: "must be a Claude model ID" },
   "openai-compatible": { re: GENERIC_MODEL_ID, message: "must be a model ID" },
+  "vertex-ai": { re: GENERIC_MODEL_ID, message: "must be a model ID" },
   "cli:claude": { re: MODEL_ID, message: "must be a Claude model ID" },
   "cli:codex": { re: GENERIC_MODEL_ID, message: "must be a model ID" },
   copilot: { re: GENERIC_MODEL_ID, message: "must be a model ID" },
@@ -434,6 +461,19 @@ function cliProvider(
   };
 }
 
+function vertexAiProvider(e: Extract<Entry, { kind: "vertex-ai" }>): VertexAiProvider {
+  return {
+    id: e.id,
+    kind: "vertex-ai",
+    capabilities: capabilitiesOf(e),
+    prices: pricesOf(e),
+    project: e.project,
+    location: e.location,
+    baseUrl: undefined,
+    sharedCredential: false,
+  };
+}
+
 function copilotProvider(e: Extract<Entry, { kind: "copilot" }>): CopilotProvider {
   return {
     id: e.id,
@@ -499,9 +539,11 @@ export function parseRegistry(
         ? anthropicProvider(e, at, env, defaults, problems)
         : e.kind === "openai-compatible"
           ? openAiCompatibleProvider(e, at, env, problems)
-          : e.kind === "copilot"
-            ? copilotProvider(e)
-            : cliProvider(e, at, deployment, problems);
+          : e.kind === "vertex-ai"
+            ? vertexAiProvider(e)
+            : e.kind === "copilot"
+              ? copilotProvider(e)
+              : cliProvider(e, at, deployment, problems);
     if (p) providers.push(Object.freeze(p));
   });
 
