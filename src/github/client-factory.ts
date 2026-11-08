@@ -32,6 +32,7 @@ export function createGitHubClientFactory(o: {
   baseUrl: string;
   /** Phase 1 write permission lookup. Without one, no Phase 1 write is ever allowed. */
   gate?: MutationGate;
+  repositoryGate?: (q: { installationId: number; owner: string; repo: string }) => Promise<boolean>;
   /** Told about each refused write (the bootstrap logs it at error). */
   onRefused?: (e: MutationRefusedError) => void;
   fetch?: typeof fetch;
@@ -63,6 +64,7 @@ export function createGitHubClientFactory(o: {
         feature: opts?.feature,
         baseUrl: o.baseUrl,
         gate,
+        ...(o.repositoryGate ? { repositoryGate: o.repositoryGate } : {}),
         ...(o.onRefused ? { onRefused: o.onRefused } : {}),
       });
       return client;

@@ -15,9 +15,9 @@ export function loginPage(cssHref: string, s: LoginPageState): string {
     s.state === "error"
       ? `<p class="login__error" role="alert">${esc(s.message)}</p>
          <a class="btn btn--primary" href="/auth/login?start=1">Try again with GitHub</a>`
-      : `<p class="login__lead">The console reads what Graft recorded: pull requests, intent cards, verdicts, guard events and jobs. It cannot change anything.</p>
+      : `<p class="login__lead">View Graft's pull requests, intent cards, verdicts, guard events and jobs. When repository management is configured, repository administrators can also control where Graft runs.</p>
          <a class="btn btn--primary" href="/auth/login?start=1">Sign in with GitHub</a>
-         <p class="login__fine">Only the operators listed in <code>CONSOLE_ALLOWED_USERS</code> get in. GitHub tells the console who you are; the console keeps nothing else.</p>`;
+         <p class="login__fine">Access is limited to allowed users or members of allowed organizations. GitHub confirms your identity; repository changes require administrator permission.</p>`;
   return `<!doctype html>
 <html lang="en">
 <head>

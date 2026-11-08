@@ -5,7 +5,8 @@ export type Route =
   | { view: "changes"; query: URLSearchParams }
   | { view: "change"; id: string }
   | { view: "gate" }
-  | { view: "system" };
+  | { view: "system" }
+  | { view: "repositories" };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f-]{36}$/;
@@ -23,6 +24,8 @@ export function parseRoute(hash: string): Route {
       return { view: "gate" };
     case "system":
       return { view: "system" };
+    case "repositories":
+      return { view: "repositories" };
     case "journal":
       return { view: "journal", date: parts[1] && DATE.test(parts[1]) ? parts[1] : null };
     default:
@@ -49,4 +52,5 @@ export const href = {
   change: (id: string) => `#/changes/${id}`,
   gate: () => "#/gate",
   system: () => "#/system",
+  repositories: () => "#/repositories",
 };

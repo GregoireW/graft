@@ -27,6 +27,10 @@ const changes = (i: number) =>
 export const OWNED_ROWS: Record<PurgedTable, (installationId: number) => RawBuilder<unknown>> = {
   installations: (i) => sql`select count(*) as n from installations where id = ${i}`,
   repositories: (i) => sql`select count(*) as n from repositories where installation_id = ${i}`,
+  enabled_repositories: (i) =>
+    sql`select count(*) as n from enabled_repositories where repository_id in ${repos(i)}`,
+  repository_filter_changes: (i) =>
+    sql`select count(*) as n from repository_filter_changes where repository_id in ${repos(i)}`,
   tasks: (i) => sql`select count(*) as n from tasks where repository_id in ${repos(i)}`,
   changes: (i) => sql`select count(*) as n from changes where repository_id in ${repos(i)}`,
   provenance: (i) => sql`select count(*) as n from provenance where change_id in ${changes(i)}`,

@@ -5,6 +5,7 @@ import { createLogger } from "../../src/core/logger.js";
 import { defineJob } from "../../src/queue/job.js";
 import { defineWebhookHandler } from "../../src/webhooks/handler.js";
 import { createRegistry } from "../../src/webhooks/registry.js";
+import { testConfig } from "../helpers/config.js";
 import { silentLog } from "../helpers/stubs.js";
 
 const noop = async () => {};
@@ -53,7 +54,7 @@ describe("registry", () => {
 });
 
 function ctxWith(log = silentLog): JobContext {
-  return { log } as unknown as JobContext;
+  return { log, config: testConfig() } as unknown as JobContext;
 }
 const data = (event: string, action?: string) => ({
   deliveryId: "d1",

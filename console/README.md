@@ -1,6 +1,6 @@
 # Graft console
 
-An optional, read-only operator console for Graft: a Fastify backend-for-frontend over Graft's Postgres and a small Preact web app. It runs in its own container with a SELECT-only database role and is never needed by Graft itself.
+An optional operator console for Graft: a Fastify backend-for-frontend over Graft's Postgres and a small Preact web app. It runs in its own container with a SELECT-only database role and is never needed by Graft itself. An optional authenticated Graft connection lets repository administrators manage repository activation without giving the console database-write access.
 
 Read [docs/console.md](../docs/console.md) for what it shows, its security model, configuration and deployment.
 

@@ -273,6 +273,8 @@ const EnvSchema = z.object({
   GRAFT_TRUST_PROXY: withDefault(proxyList, ""),
   GRAFT_PUBLIC_URL: opt(httpUrl),
   GRAFT_ALLOWED_ACCOUNTS: withDefault(accountList, ""),
+  GRAFT_REPOSITORY_FILTER: withDefault(onOff, "off"),
+  GRAFT_CONSOLE_SECRET: opt(z.string().min(32, "must be at least 32 characters")),
   GRAFT_UNINSTALL_UNLISTED: withDefault(onOff, "off"),
 });
 
@@ -408,6 +410,8 @@ export interface Config {
    * it is stored, so a public App installed by a stranger costs nothing.
    */
   readonly allowedAccounts: readonly string[];
+  readonly repositoryFilter: boolean;
+  readonly consoleSecret: string | null;
   /** Uninstall the App when an account outside `allowedAccounts` installs it. */
   readonly uninstallUnlisted: boolean;
 }
@@ -585,6 +589,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     trustProxy: Object.freeze([...d.GRAFT_TRUST_PROXY]),
     publicUrl: d.GRAFT_PUBLIC_URL?.replace(/\/+$/, "") ?? null,
     allowedAccounts: Object.freeze([...d.GRAFT_ALLOWED_ACCOUNTS]),
+    repositoryFilter: d.GRAFT_REPOSITORY_FILTER,
+    consoleSecret: d.GRAFT_CONSOLE_SECRET ?? null,
     uninstallUnlisted: d.GRAFT_UNINSTALL_UNLISTED,
   });
 }

@@ -6,6 +6,7 @@ import { useApi } from "./api.js";
 import { Mark } from "./components.js";
 import { Journal } from "./journal.js";
 import { ChangePage } from "./record.js";
+import { Repositories } from "./repositories.js";
 import { href, type Route, useRoute } from "./router.js";
 import { Changes, Gate, System } from "./views.js";
 
@@ -59,14 +60,20 @@ function Header({
           <a href={href.system()} aria-current={current(["system"])}>
             System
           </a>
+          <a href={href.repositories()} aria-current={current(["repositories"])}>
+            Repositories
+          </a>
         </nav>
         <div class="top__end">
           <span
             class="env"
-            title="The console reads Graft's database with a read-only role and never writes to GitHub"
+            title="Database access stays read-only. Repository activation, when configured, is managed through Graft."
           >
             <i class="env__ring" />
-            <span>read-only{ceiling ? ` · ceiling ${ceiling}` : ""}</span>
+            <span>
+              {me?.repositoryManagement ? "operator" : "read-only"}
+              {ceiling ? ` · ceiling ${ceiling}` : ""}
+            </span>
           </span>
           {me ? (
             <span class="who">
@@ -124,6 +131,7 @@ function App() {
       change: "Change",
       gate: "Gate",
       system: "System",
+      repositories: "Repositories",
     };
     document.title = `${titles[route.view]} · Graft Console`;
   }, [route.view]);
@@ -137,6 +145,7 @@ function App() {
         {route.view === "change" ? <ChangePage id={route.id} /> : null}
         {route.view === "gate" ? <Gate ov={ov} /> : null}
         {route.view === "system" ? <System ov={ov} /> : null}
+        {route.view === "repositories" ? <Repositories /> : null}
       </main>
       <div class="toast" id="toast" role="status" aria-live="polite" />
     </>

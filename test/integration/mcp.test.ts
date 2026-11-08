@@ -360,6 +360,7 @@ describe("MCP server (Phase 1 step 6)", () => {
         .values({ repository_id: REPO_ID, token_id: tokenId, pr_number: 5, head_sha: null })
         .execute(),
     ).rejects.toThrow(/check constraint/);
+    expect(await migrateDownOne(t.db)).toEqual(["0018_repository_filter"]);
     expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
@@ -380,6 +381,7 @@ describe("MCP server (Phase 1 step 6)", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     expect(await tables()).toEqual(["mcp_changes", "mcp_tokens"]);
@@ -416,6 +418,7 @@ describe("MCP server (Phase 1 step 6)", () => {
           from information_schema.columns where table_name = 'mcp_changes'
           and column_name in ('pr_number', 'head_sha') order by 1`.execute(t.db)
       ).rows;
+    expect(await migrateDownOne(t.db)).toEqual(["0018_repository_filter"]);
     expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
@@ -431,6 +434,7 @@ describe("MCP server (Phase 1 step 6)", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
   });

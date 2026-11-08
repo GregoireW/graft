@@ -40,6 +40,23 @@ export interface RepositoriesTable {
   updated_at: Timestamp;
 }
 
+export interface EnabledRepositoriesTable {
+  repository_id: number;
+  installation_id: number;
+  enabled_by: string;
+  enabled_by_id: number;
+  created_at: Timestamp;
+}
+
+export interface RepositoryFilterChangesTable {
+  id: Generated<string>;
+  repository_id: number;
+  action: "enabled" | "disabled";
+  actor: string;
+  actor_id: number | null;
+  created_at: Timestamp;
+}
+
 /** Audit of `graft mode set`; `applied_at` is NULL until the worker has acted on the change. */
 export interface ModeChangesTable {
   id: Generated<string>;
@@ -577,6 +594,8 @@ export interface McpChangesTable {
 export interface Database {
   installations: InstallationsTable;
   repositories: RepositoriesTable;
+  enabled_repositories: EnabledRepositoriesTable;
+  repository_filter_changes: RepositoryFilterChangesTable;
   tasks: TasksTable;
   changes: ChangesTable;
   provenance: ProvenanceTable;
@@ -605,6 +624,8 @@ export interface Database {
 }
 
 export const TABLE_NAMES = [
+  "enabled_repositories",
+  "repository_filter_changes",
   "installations",
   "repositories",
   "tasks",

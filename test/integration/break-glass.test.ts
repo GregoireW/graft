@@ -193,6 +193,7 @@ describe("break-glass and audit log (integration)", () => {
   it("I-BG-1 migration 0010 down then up; down refuses while a break_glass verdict exists", async () => {
     await truncateAll(t.db);
     // Steps 4 and 5's migrations and review 1's (I-BG-24) sit on top of 0010.
+    expect(await migrateDownOne(t.db)).toEqual(["0018_repository_filter"]);
     expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
@@ -223,6 +224,7 @@ describe("break-glass and audit log (integration)", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     expect(await reasonCheck()).toContain("break_glass");
@@ -244,6 +246,7 @@ describe("break-glass and audit log (integration)", () => {
     label(MAYA);
     expect(await runLabeled()).toBe("published");
     expect((await lastVerdict())?.enforced_reason).toBe("break_glass");
+    expect(await migrateDownOne(t.db)).toEqual(["0018_repository_filter"]);
     expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
     expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
     expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
@@ -264,6 +267,7 @@ describe("break-glass and audit log (integration)", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
 
@@ -997,6 +1001,7 @@ describe("break-glass and audit log (integration)", () => {
           await sql<{ def: string }>`select indexdef as def from pg_indexes
             where indexname = 'audit_log_ignored_once'`.execute(t.db)
         ).rows[0]?.def ?? "";
+      expect(await migrateDownOne(t.db)).toEqual(["0018_repository_filter"]);
       expect(await migrateDownOne(t.db)).toEqual(["0017_intent_requested"]);
       expect(await migrateDownOne(t.db)).toEqual(["0016_phase1_gate"]);
       expect(await migrateDownOne(t.db)).toEqual(["0015_mcp_open_claims"]);
@@ -1014,6 +1019,7 @@ describe("break-glass and audit log (integration)", () => {
           "0015_mcp_open_claims",
           "0016_phase1_gate",
           "0017_intent_requested",
+          "0018_repository_filter",
         ]);
       }
       expect(await column()).toBe(1);

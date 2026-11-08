@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { GithubAuth } from "./config.js";
+import type { GraftApi } from "./graft.js";
 import type { LoginPageState } from "./pages.js";
 import type { AppServer } from "./server-type.js";
 
@@ -17,7 +18,7 @@ export interface Session {
 
 declare module "fastify" {
   interface FastifyRequest {
-    user?: { login: string };
+    user?: { login: string; id?: number };
   }
 }
 
@@ -158,11 +159,23 @@ export function registerGithubAuth(
   app: AppServer,
   cfg: GithubAuth,
   oauth: GithubOAuth,
-  opts: { renderLogin: (s: LoginPageState) => string; now?: () => number },
+  opts: { renderLogin: (s: LoginPageState) => string; now?: () => number; graft?: GraftApi },
 ): void {
   const now = opts.now ?? Date.now;
   const loginPage = opts.renderLogin;
   const secure = cfg.publicUrl.startsWith("https://");
+  const membershipCache = new Map<number, { allowed: boolean; until: number }>();
+  const allowed = async (user: { login: string; id: number }, refresh = false) => {
+    if (isAllowed(cfg.allowedUsers, user)) return true;
+    if (!cfg.allowedOrganizations.length) return false;
+    if (!opts.graft) throw new Error("Organization authentication needs a Graft connection");
+    const cached = membershipCache.get(user.id);
+    if (!refresh && cached && cached.until > now()) return cached.allowed;
+    const result = await opts.graft.access(user, cfg.allowedOrganizations);
+    if (membershipCache.size >= 2000) membershipCache.clear();
+    membershipCache.set(user.id, { allowed: result.allowed, until: now() + 60_000 });
+    return result.allowed;
+  };
 
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?")[0] ?? "/";
@@ -173,9 +186,19 @@ export function registerGithubAuth(
       parseCookies(req.headers.cookie)[SESSION_COOKIE],
       now(),
     );
-    if (s && isAllowed(cfg.allowedUsers, s)) {
-      req.user = { login: s.login };
-      return;
+    if (s) {
+      try {
+        if (await allowed(s)) {
+          req.user = { login: s.login, id: s.id };
+          return;
+        }
+      } catch (err) {
+        req.log.warn({ err }, "organization access verification failed");
+        return reply.code(503).send({
+          error: "access_unavailable",
+          message: "GitHub organization membership could not be verified. Try again.",
+        });
+      }
     }
     if (isApi(req)) {
       return reply
@@ -235,11 +258,21 @@ export function registerGithubAuth(
       req.log.warn({ err }, "github sign-in failed");
       return fail(502, "GitHub could not confirm who you are. Try again in a minute.");
     }
-    if (!isAllowed(cfg.allowedUsers, user)) {
-      req.log.warn({ login: user.login }, "sign-in refused: not in CONSOLE_ALLOWED_USERS");
+    let permitted: boolean;
+    try {
+      permitted = await allowed(user, true);
+    } catch (err) {
+      req.log.warn({ err }, "organization sign-in verification failed");
+      return fail(
+        503,
+        "Your organization membership could not be verified. Check that Graft has members:read permission.",
+      );
+    }
+    if (!permitted) {
+      req.log.warn({ login: user.login }, "sign-in refused by console allow-lists");
       return fail(
         403,
-        `${user.login} is not on this console's list of operators. Ask whoever runs Graft to add you to CONSOLE_ALLOWED_USERS.`,
+        `${user.login} is not on this console's list of operators or a member of an allowed organization. Ask whoever runs Graft to update CONSOLE_ALLOWED_USERS or CONSOLE_ALLOWED_ORGANIZATIONS.`,
       );
     }
     const exp = Math.floor(now() / 1000) + cfg.sessionHours * 3600;

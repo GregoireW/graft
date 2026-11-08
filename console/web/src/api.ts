@@ -19,8 +19,21 @@ export class HttpError extends Error {
 }
 
 export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(path, undefined, signal);
+}
+
+export async function postJson<T>(path: string, body: object): Promise<T> {
+  return requestJson<T>(path, body);
+}
+
+async function requestJson<T>(path: string, body?: object, signal?: AbortSignal): Promise<T> {
   const res = await fetch(path, {
-    headers: { accept: "application/json" },
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      accept: "application/json",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     credentials: "same-origin",
     ...(signal ? { signal } : {}),
   });

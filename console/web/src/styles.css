@@ -13,6 +13,26 @@
 @import "@fontsource/courier-prime/latin-700.css";
 @import "@fontsource/courier-prime/latin-ext-700.css";
 
+.repo-settings section { margin-top: 2.5rem; }
+.repo-settings__scope { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--rule); }
+.repo-settings__scope p { margin: 0.5rem 0 0; }
+.repo-settings__list { list-style: none; padding: 0; margin: 1rem 0; }
+.repo-settings__list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--rule); }
+.repo-settings__list li > div { min-width: 0; max-width: 100%; }
+.repo-settings__list strong { overflow-wrap: anywhere; }
+.repo-settings__list small { display: block; color: var(--ink-2); margin-top: 0.35rem; }
+.repo-settings__permission { color: var(--ink-2); }
+.repo-settings__search { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; max-width: 48rem; }
+.repo-settings__query { flex: 1; min-width: 12rem; }
+.repo-settings .repo-settings__search input, .repo-settings .repo-settings__search select { width: 100%; min-height: 44px; }
+.repo-settings__paging { display: flex; gap: 1rem; margin-top: 1rem; }
+.repo-settings__error { color: var(--sensitive); }
+@media (max-width: 720px) {
+  .repo-settings__list li { align-items: start; flex-direction: column; }
+  .repo-settings__search .field { width: 100%; }
+  .repo-settings .repo-settings__query { flex-basis: 100%; }
+}
+
 :root {
   --board: #e4e8df;
   --sheet: #f6f7f2;

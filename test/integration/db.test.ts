@@ -43,10 +43,10 @@ async function tableNames(d: Kysely<Database>): Promise<string[]> {
 }
 
 describe("database", () => {
-  it("I-DB-1 after migration, all twenty-seven tables exist", async () => {
+  it("I-DB-1 after migration, all twenty-nine tables exist", async () => {
     const names = await tableNames(db);
     for (const t of TABLE_NAMES) expect(names).toContain(t);
-    expect(TABLE_NAMES).toHaveLength(27);
+    expect(TABLE_NAMES).toHaveLength(29);
     expect(TABLE_NAMES).toContain("intent_feedback");
     expect(TABLE_NAMES).toContain("change_provenance");
   });
@@ -96,6 +96,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
       expect(await migrateToLatest(db)).toEqual([]);
       const again = await tableNames(db);
@@ -443,6 +444,24 @@ describe("database", () => {
       .insertInto("mcp_changes")
       .values({ repository_id: 2, token_id: token.id, pr_number: 5, head_sha: SHA })
       .execute();
+    await db
+      .insertInto("enabled_repositories")
+      .values({
+        repository_id: 2,
+        installation_id: 1,
+        enabled_by: "tester",
+        enabled_by_id: 10,
+      })
+      .execute();
+    await db
+      .insertInto("repository_filter_changes")
+      .values({
+        repository_id: 2,
+        action: "enabled",
+        actor: "tester",
+        actor_id: 10,
+      })
+      .execute();
 
     for (const t of TABLE_NAMES) {
       const rows = await db.selectFrom(t).selectAll().execute();
@@ -596,6 +615,9 @@ describe("database", () => {
     const migrator = createMigrator(db);
     try {
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
@@ -656,6 +678,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     expect(await tableNames(db)).toContain("change_provenance");
@@ -667,6 +690,9 @@ describe("database", () => {
   it("I-DB-8 0003 down then up: down restores the 0001 intent_cards and drops intent_feedback", async () => {
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
@@ -728,6 +754,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     expect(await tableNames(db)).toContain("intent_feedback");
@@ -778,6 +805,9 @@ describe("database", () => {
       );
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
@@ -860,6 +890,9 @@ describe("database", () => {
     const migrator = createMigrator(db);
     try {
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe("0016_phase1_gate");
@@ -919,6 +952,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     expect(await policyColumns()).toEqual(upColumns);
@@ -946,6 +980,9 @@ describe("database", () => {
     for (const t of stepSix) expect(await tableNames(db), t).toContain(t);
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
@@ -990,6 +1027,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     for (const t of stepSix) expect(await tableNames(db), t).toContain(t);
@@ -1027,6 +1065,9 @@ describe("database", () => {
       .executeTakeFirstOrThrow();
     const migrator = createMigrator(db);
     try {
+      expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
+        "0018_repository_filter",
+      );
       expect((await migrator.migrateDown()).results?.[0]?.migrationName).toBe(
         "0017_intent_requested",
       );
@@ -1066,6 +1107,7 @@ describe("database", () => {
         "0015_mcp_open_claims",
         "0016_phase1_gate",
         "0017_intent_requested",
+        "0018_repository_filter",
       ]);
     }
     const rows = await sql<{ user_id: number; verified: boolean }>`

@@ -4,6 +4,7 @@ import type { Config } from "../config/index.js";
 import type { Clock } from "../core/clock.js";
 import type { Logger } from "../core/logger.js";
 import type { Db } from "../db/client.js";
+import { repositoryEnabled } from "../modules/repositories/filter.js";
 import { sanitizeError } from "../queue/errors.js";
 import type { JobQueue } from "../queue/queue.js";
 import { checkAccount } from "./accounts.js";
@@ -17,7 +18,11 @@ export interface ReceiverDeps {
   clock: Clock;
   config: Pick<
     Config,
-    "githubWebhookSecret" | "webhookBodyLimitBytes" | "allowedAccounts" | "uninstallUnlisted"
+    | "githubWebhookSecret"
+    | "webhookBodyLimitBytes"
+    | "allowedAccounts"
+    | "uninstallUnlisted"
+    | "repositoryFilter"
   >;
   log: Logger;
   /** Removes the App from an installation (`GRAFT_UNINSTALL_UNLISTED`). */
@@ -133,6 +138,18 @@ export const webhookReceiver =
                   ),
               );
             }
+            return reply.code(202).send({ status: "ignored" });
+          }
+          if (
+            repositoryId !== undefined &&
+            event !== "installation" &&
+            event !== "installation_repositories" &&
+            !(await repositoryEnabled(deps.db, deps.config, repositoryId, installationId))
+          ) {
+            log.info(
+              { repositoryId, outcome: "repository_disabled" },
+              "repository webhook ignored",
+            );
             return reply.code(202).send({ status: "ignored" });
           }
           const outcome = await recordDelivery(deps, {
