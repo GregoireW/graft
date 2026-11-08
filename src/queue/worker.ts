@@ -1,5 +1,7 @@
+import { SpanKind } from "@opentelemetry/api";
 import type { JobWithMetadata } from "pg-boss";
 import type { JobContext } from "../core/context.js";
+import { contextFromCarrier, markError, takeTraceCarrier, withSpan } from "../telemetry/tracing.js";
 import type { Registry } from "../webhooks/registry.js";
 import { PermanentJobError, sanitizeError } from "./errors.js";
 import type { PgBossJobQueue } from "./queue.js";
@@ -28,26 +30,56 @@ export async function startWorker(
       async (jobs: JobWithMetadata<object>[]) => {
         for (const j of jobs) {
           const log = ctx.log.child({ job: job.name, jobId: j.id });
-          try {
-            const data = job.schema.parse(j.data);
-            await job.handle(data, {
-              ...ctx,
-              log,
-              attempt: { retryCount: j.retryCount, retryLimit: j.retryLimit },
-            });
-          } catch (raw) {
-            // Octokit/SDK errors carry request and response bodies (possibly model output), and
-            // both pino and pg-boss serialize them: only the sanitized error leaves this block.
-            const err = sanitizeError(raw);
-            if (raw instanceof PermanentJobError) {
-              // Retrying cannot help: log and return so pg-boss completes the job.
-              log.error({ err, permanent: true, reason: raw.reason }, "job failed permanently");
-              continue;
-            }
-            // Rethrow: pg-boss fails the job and retries per the queue's options.
-            log.error({ err }, "job failed");
-            throw err;
-          }
+          // The sender's trace context, if it had one: the job continues that trace.
+          const { carrier, data: raw } = takeTraceCarrier(j.data);
+          await withSpan(
+            `job ${job.name}`,
+            {
+              kind: SpanKind.CONSUMER,
+              parent: contextFromCarrier(carrier),
+              attributes: {
+                "messaging.system": "pg-boss",
+                "messaging.operation.type": "process",
+                "messaging.destination.name": job.name,
+                "messaging.message.id": j.id,
+                "graft.job.name": job.name,
+                "graft.job.retry_count": j.retryCount,
+              },
+            },
+            async (span) => {
+              try {
+                const data = job.schema.parse(raw);
+                await job.handle(data, {
+                  ...ctx,
+                  log,
+                  attempt: { retryCount: j.retryCount, retryLimit: j.retryLimit },
+                });
+                span.setAttribute("graft.job.outcome", "completed");
+              } catch (thrown) {
+                // Octokit/SDK errors carry request and response bodies (possibly model output), and
+                // both pino and pg-boss serialize them: only the sanitized error leaves this block.
+                const err = sanitizeError(thrown);
+                if (thrown instanceof PermanentJobError) {
+                  // Retrying cannot help: log and return so pg-boss completes the job.
+                  span.setAttributes({
+                    "graft.job.outcome": "failed_permanently",
+                    "graft.job.failure_reason": thrown.reason,
+                  });
+                  markError(span, thrown);
+                  log.error(
+                    { err, permanent: true, reason: thrown.reason },
+                    "job failed permanently",
+                  );
+                  return;
+                }
+                // Rethrow: pg-boss fails the job and retries per the queue's options.
+                span.setAttribute("graft.job.outcome", "failed");
+                markError(span, thrown);
+                log.error({ err }, "job failed");
+                throw err;
+              }
+            },
+          );
         }
       },
     );

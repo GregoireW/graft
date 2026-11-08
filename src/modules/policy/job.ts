@@ -31,6 +31,7 @@ import { type LoadedPolicy, loadBasePolicy, resolveBaseCommit } from "../../poli
 import { canonicalHash } from "../../policy/parse.js";
 import { PermanentJobError } from "../../queue/errors.js";
 import { defineJob } from "../../queue/job.js";
+import { annotate } from "../../telemetry/tracing.js";
 import { auditRowCount, insertAuditRow, type NewAuditRow } from "../audit/index.js";
 import { type Change, getChange, type LivePull, upsertChangeFromPull } from "../changes/index.js";
 import {
@@ -1062,7 +1063,7 @@ export const policyEvaluateJob = defineJob<EvaluateData>({
   schema: evaluateSchema,
   options: { retryLimit: 5, retryDelaySeconds: 30, retryBackoff: true, expireInSeconds: 120 },
   async handle(data, ctx) {
-    await evaluatePolicyJobRun(data, ctx);
+    annotate({ "graft.outcome": await evaluatePolicyJobRun(data, ctx) });
   },
 });
 

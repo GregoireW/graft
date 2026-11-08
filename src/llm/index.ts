@@ -10,6 +10,7 @@ import { type CopilotTokenSource, createCopilotLlm } from "./copilot.js";
 import { createOpenAiCompatibleLlm } from "./openai-compatible.js";
 import type { CliKind, LlmProvider, LlmRegistry } from "./registry.js";
 import { createRouterLlm } from "./router.js";
+import { tracedLlm } from "./traced.js";
 import type { LlmClient } from "./types.js";
 import { unconfiguredLlm } from "./unconfigured.js";
 import { createVertexAiLlm, vertexAiHost } from "./vertex-ai.js";
@@ -62,13 +63,16 @@ export function createLlmClient(
         : { host, auth: credential.apiKey ? "api_key" : "auth_token" },
       "llm client: anthropic",
     );
-    return createAnthropicLlm({
-      ...credential,
-      ...(config.anthropicBaseUrl ? { baseURL: config.anthropicBaseUrl } : {}),
-      maxRetries: config.llmMaxRetries,
-      refusalFallback: config.llmRefusalFallback && isClaudeApi(config.anthropicBaseUrl),
-      log,
-    });
+    return tracedLlm(
+      createAnthropicLlm({
+        ...credential,
+        ...(config.anthropicBaseUrl ? { baseURL: config.anthropicBaseUrl } : {}),
+        maxRetries: config.llmMaxRetries,
+        refusalFallback: config.llmRefusalFallback && isClaudeApi(config.anthropicBaseUrl),
+        log,
+      }),
+      { kind: "anthropic" },
+    );
   }
   log.info("llm client: unconfigured");
   return unconfiguredLlm();
@@ -94,7 +98,10 @@ export function createRegistryLlm(
   return createRouterLlm(
     registry.providers.map((provider) => ({
       provider,
-      client: providerClient(provider, settings, log.child({ provider: provider.id }), deps),
+      client: tracedLlm(
+        providerClient(provider, settings, log.child({ provider: provider.id }), deps),
+        provider,
+      ),
     })),
   );
 }

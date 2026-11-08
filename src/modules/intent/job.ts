@@ -9,12 +9,14 @@ import { upsertManagedSection } from "../../github/managed-comment.js";
 import { resolveBaseCommit } from "../../policy/load.js";
 import { PermanentJobError } from "../../queue/errors.js";
 import { defineJob } from "../../queue/job.js";
+import { annotate, withSpan } from "../../telemetry/tracing.js";
 import { type Change, getChange, type LivePull, upsertChangeFromPull } from "../changes/index.js";
 import { ensureRepository, getActiveInstallation } from "../installations/index.js";
 import { computeProvenance, fetchPrCommits } from "../provenance/index.js";
 import { fetchIntentInputs } from "./fetch.js";
 import {
   type CardResult,
+  cardAttributes,
   defaultGenerateOptions,
   prepareCardInputs,
   runCard,
@@ -338,7 +340,15 @@ export async function generateIntent(data: GenerateData, ctx: JobContext): Promi
     ) {
       result = unavailableResult(prepared, "budget_exceeded");
     } else {
-      result = await runCard(prepared, ctx.llm, opts);
+      result = await withSpan(
+        "intent.card",
+        { attributes: { "graft.card.estimated_tokens": prepared.estimatedTokens } },
+        async (span) => {
+          const r = await runCard(prepared, ctx.llm, opts);
+          span.setAttributes(cardAttributes(r));
+          return r;
+        },
+      );
     }
     card = await saveCard(ctx.db, {
       changeId: change.id,
@@ -477,6 +487,6 @@ export const intentGenerateJob = defineJob<GenerateData>({
   schema: generateSchema,
   options: { retryLimit: 5, retryDelaySeconds: 30, retryBackoff: true, expireInSeconds: 900 },
   async handle(data, ctx) {
-    await generateIntent(data, ctx);
+    annotate({ "graft.outcome": await generateIntent(data, ctx) });
   },
 });

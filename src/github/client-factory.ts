@@ -7,6 +7,7 @@ import {
   type MutationRefusedError,
   refuseAllGate,
 } from "./mutation-guard.js";
+import { traceGitHub } from "./tracing.js";
 
 export type GitHubClient = InstanceType<typeof Octokit>;
 
@@ -48,6 +49,7 @@ export function createGitHubClientFactory(o: {
   });
   const gate = o.gate ?? refuseAllGate;
   const appClient = app.octokit as unknown as GitHubClient;
+  traceGitHub(appClient, { installationId: null });
   installMutationGuard(appClient, {
     installationId: null,
     feature: undefined,
@@ -59,6 +61,7 @@ export function createGitHubClientFactory(o: {
     // @octokit/app caches installation tokens (until close to expiry) inside the auth strategy.
     async forInstallation(installationId, opts) {
       const client = (await app.getInstallationOctokit(installationId)) as unknown as GitHubClient;
+      traceGitHub(client, { installationId });
       installMutationGuard(client, {
         installationId,
         feature: opts?.feature,
