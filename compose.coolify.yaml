@@ -33,6 +33,14 @@ x-graft-env: &graft-env
   GRAFT_PUBLIC_URL: ${GRAFT_PUBLIC_URL:-}
   GRAFT_REPOSITORY_FILTER: ${GRAFT_REPOSITORY_FILTER:-off}
   GRAFT_CONSOLE_SECRET: ${GRAFT_CONSOLE_SECRET:-}
+  # OpenTelemetry (docs/observability.md): traces go to this OTLP endpoint, for example
+  # http://otel-collector:4318. Unset, telemetry stays off.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-}
 
 # Each Graft service builds the same Dockerfile; they share the build cache. Do not give them a
 # common `image:` name: Coolify builds services in parallel and a shared tag makes all but one fail.
@@ -70,7 +78,7 @@ services:
 
   worker:
     build: *graft-build
-    command: ["node", "dist/bin/worker.js"]
+    command: ["node", "--import", "./dist/bin/otel.js", "dist/bin/worker.js"]
     environment: *graft-env
     depends_on:
       migrate:

@@ -77,6 +77,7 @@ Follow [Pointing the App at the deployment](README.md#pointing-the-app-at-the-de
 - **Backups:** the database resource's **Backups** tab (step 1). Test a restore once before you rely on it.
 - **Database upgrades and restarts** are done on the database resource, when you choose, not by a Graft deploy. Stop the Graft resource first if the database will be down for more than a few seconds.
 - **Logs:** each service's logs in Coolify. Graft logs JSON (pino), with no tokens, diffs or PR text.
+- **Traces:** set `OTEL_EXPORTER_OTLP_ENDPOINT` (for example `http://otel-collector:4318`) in the resource's Environment Variables to send traces to an OpenTelemetry collector. The collector must share a Docker network with `server` and `worker`. See [Observability](../observability.md).
 
 ## Hardening the server
 

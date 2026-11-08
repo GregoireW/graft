@@ -291,7 +291,7 @@ FROM graft:local                  # the image built from this repository's Docke
 USER root
 RUN npm install -g @anthropic-ai/claude-code@2.1.284
 USER node
-CMD ["node", "dist/bin/worker.js"]
+CMD ["node", "--import", "./dist/bin/otel.js", "dist/bin/worker.js"]
 ```
 
 ```sh
