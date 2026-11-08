@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
@@ -115,6 +116,18 @@ describe("telemetry settings", () => {
     expect(defaultServiceName(["node", "dist/bin/server.js"])).toBe("graft-server");
     expect(defaultServiceName(["node", "/app/src/bin/worker.ts"])).toBe("graft-worker");
     expect(defaultServiceName(["node"])).toBe("graft");
+  });
+});
+
+describe("the console's copy", () => {
+  it("U-OTEL-18 the console's settings, allow-list and shutdown are byte-for-byte Graft's", () => {
+    // The console builds from console/ alone, so it cannot import src/telemetry: it keeps copies.
+    // Change both, or this fails.
+    for (const file of ["settings.ts", "redact.ts", "index.ts"]) {
+      expect(readFileSync(`console/server/src/telemetry/${file}`, "utf8"), file).toBe(
+        readFileSync(`src/telemetry/${file}`, "utf8"),
+      );
+    }
   });
 });
 

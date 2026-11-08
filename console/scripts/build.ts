@@ -71,9 +71,11 @@ const restartPlugin: esbuild.Plugin = {
     b.onEnd((r) => {
       if (!watch || r.errors.length > 0) return;
       child?.kill("SIGTERM");
-      child = spawn(process.execPath, ["--enable-source-maps", join(dist, "server.js")], {
-        stdio: "inherit",
-      });
+      child = spawn(
+        process.execPath,
+        ["--enable-source-maps", "--import", join(dist, "otel.js"), join(dist, "server.js")],
+        { stdio: "inherit" },
+      );
     });
   },
 };
@@ -94,12 +96,32 @@ const server: esbuild.BuildOptions = {
   logLevel: "info",
 };
 
+// The OpenTelemetry preload (dist/otel.js). Split, so the SDK sits in its own chunk and is only
+// loaded when an endpoint is set.
+const otel: esbuild.BuildOptions = {
+  entryPoints: { otel: join(root, "server/src/otel.ts") },
+  bundle: true,
+  splitting: true,
+  platform: "node",
+  format: "esm",
+  target: "node24",
+  outdir: dist,
+  chunkNames: "chunks/[name]-[hash]",
+  external: Object.keys(pkg.dependencies),
+  define: { __CONSOLE_VERSION__: JSON.stringify(pkg.version) },
+  sourcemap: true,
+  legalComments: "none",
+  logLevel: "info",
+};
+
 if (watch) {
+  await esbuild.build(otel);
   const w = await esbuild.context(web);
   await w.watch();
   const s = await esbuild.context(server);
   await s.watch();
 } else {
   await esbuild.build(web);
+  await esbuild.build(otel);
   await esbuild.build(server);
 }
