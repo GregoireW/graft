@@ -7,6 +7,7 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import { sql } from "kysely";
 import type { Db } from "../../db/client.js";
 import { hashToken } from "../../mcp/tokens.js";
+import { repositoryEnabled } from "../repositories/filter.js";
 
 export interface McpPrincipal {
   tokenId: string;
@@ -22,7 +23,11 @@ export type McpAuthInfo = AuthInfo & { extra: McpPrincipal & Record<string, unkn
  * The `AuthInfo` of a token, or null when the token is unknown, expired, revoked or orphaned. The
  * only code that holds the secret next to the principal: its `token` field is always `[redacted]`.
  */
-export async function authorizeToken(db: Db, token: string): Promise<McpAuthInfo | null> {
+export async function authorizeToken(
+  db: Db,
+  token: string,
+  repositoryFilter = false,
+): Promise<McpAuthInfo | null> {
   const row = await db
     .selectFrom("mcp_tokens as t")
     .innerJoin("repositories as r", "r.id", "t.repository_id")
@@ -36,6 +41,15 @@ export async function authorizeToken(db: Db, token: string): Promise<McpAuthInfo
     .where("i.suspended_at", "is", null)
     .executeTakeFirst();
   if (!row) return null;
+  if (
+    !(await repositoryEnabled(
+      db,
+      { repositoryFilter },
+      Number(row.repositoryId),
+      Number(row.installationId),
+    ))
+  )
+    return null;
   return authInfoFor({
     tokenId: row.tokenId,
     repositoryId: Number(row.repositoryId),

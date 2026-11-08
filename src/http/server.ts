@@ -6,6 +6,7 @@ import { mcpRoutes } from "../modules/mcp/index.js";
 import { cardKey } from "../modules/policy/card.js";
 import { sanitizeError } from "../queue/errors.js";
 import { webhookReceiver } from "../webhooks/receiver.js";
+import { consoleRoutes } from "./console.js";
 import { healthRoutes } from "./health.js";
 import { summaryCardRoutes } from "./summary-card.js";
 
@@ -33,6 +34,7 @@ export async function buildServer(deps: AppDeps): Promise<AppServer> {
   });
 
   await app.register(healthRoutes({ db: deps.db, queue: deps.queue }));
+  await app.register(consoleRoutes(deps));
   // The review summary's status card; without a public URL no comment links to it.
   if (deps.config.publicUrl !== null) {
     await app.register(summaryCardRoutes({ key: cardKey(deps.config.githubWebhookSecret) }));

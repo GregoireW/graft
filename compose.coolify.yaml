@@ -31,6 +31,8 @@ x-graft-env: &graft-env
   GRAFT_MODE_CEILING: ${GRAFT_MODE_CEILING:-report}
   # The server's domain (https://..., no trailing slash): the review summary's status card image.
   GRAFT_PUBLIC_URL: ${GRAFT_PUBLIC_URL:-}
+  GRAFT_REPOSITORY_FILTER: ${GRAFT_REPOSITORY_FILTER:-off}
+  GRAFT_CONSOLE_SECRET: ${GRAFT_CONSOLE_SECRET:-}
   # OpenTelemetry (docs/observability.md): traces go to this OTLP endpoint, for example
   # http://otel-collector:4318. Unset, telemetry stays off.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

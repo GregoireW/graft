@@ -6,6 +6,7 @@ import type { ApiError, DayResponse, DaysResponse, Me } from "../../shared/api.j
 import { type GithubOAuth, githubOAuth, registerGithubAuth, registerNoAuth } from "./auth.js";
 import { type Config, isValidTimeZone } from "./config.js";
 import type { Db } from "./db.js";
+import { type GraftApi, GraftError, graftApi } from "./graft.js";
 import { loginPage } from "./pages.js";
 import { changeRecord, register } from "./queries/changes.js";
 import { dayEntries } from "./queries/day.js";
@@ -26,6 +27,7 @@ export interface AppDeps {
   pgboss: boolean;
   oauth?: GithubOAuth;
   now?: () => number;
+  graft?: GraftApi;
 }
 
 const CSP = [
@@ -56,6 +58,7 @@ const int = (min: number, max: number) => z.coerce.number().int().min(min).max(m
 
 export async function buildApp(deps: AppDeps): Promise<AppServer> {
   const { config, db } = deps;
+  const graft = deps.graft ?? (config.graft ? graftApi(config.graft) : undefined);
   const app = Fastify({
     loggerInstance: deps.log,
     bodyLimit: 16 * 1024,
@@ -74,6 +77,10 @@ export async function buildApp(deps: AppDeps): Promise<AppServer> {
   });
 
   app.setErrorHandler(async (err: Error & { code?: string; statusCode?: number }, req, reply) => {
+    if (err instanceof GraftError) {
+      if (err.statusCode >= 500) req.log.warn({ err }, "graft administration request failed");
+      return reply.code(err.statusCode).send({ error: "graft_error", message: err.message });
+    }
     if (err instanceof BadRequest) {
       return reply
         .code(400)
@@ -112,6 +119,7 @@ export async function buildApp(deps: AppDeps): Promise<AppServer> {
     registerGithubAuth(app, config.auth, deps.oauth ?? githubOAuth(config.auth), {
       renderLogin,
       ...(deps.now ? { now: deps.now } : {}),
+      ...(graft ? { graft } : {}),
     });
   } else {
     registerNoAuth(app);
@@ -125,6 +133,7 @@ export async function buildApp(deps: AppDeps): Promise<AppServer> {
     async (req): Promise<Me> => ({
       login: req.user?.login ?? "unknown",
       auth: config.auth.mode,
+      ...(graft && config.auth.mode === "github" ? { repositoryManagement: true } : {}),
     }),
   );
 
@@ -195,6 +204,53 @@ export async function buildApp(deps: AppDeps): Promise<AppServer> {
       dailyTokenBudget: config.dailyTokenBudget,
       now: nowDate(),
     });
+  });
+  const principal = (req: import("fastify").FastifyRequest) => {
+    if (!graft)
+      throw new GraftError(
+        503,
+        "Repository management needs CONSOLE_GRAFT_URL and CONSOLE_GRAFT_SECRET.",
+      );
+    if (config.auth.mode !== "github" || req.user?.id === undefined) {
+      throw new GraftError(403, "Sign in with GitHub to manage repositories.");
+    }
+    return { login: req.user.login, id: req.user.id };
+  };
+  app.get("/api/repositories", async (req) => {
+    const user = principal(req);
+    const q = parse(z.object({ after: int(0, Number.MAX_SAFE_INTEGER).default(0) }), req.query);
+    return graft?.repositories(user, q.after);
+  });
+  app.get("/api/repositories/search", async (req) => {
+    const user = principal(req);
+    const q = parse(
+      z.object({
+        account: z.string().regex(/^[A-Za-z0-9-]{1,39}$/),
+        query: z.string().regex(/^[A-Za-z0-9_.-]{2,100}$/),
+        page: int(1, 100).default(1),
+      }),
+      req.query,
+    );
+    return graft?.search(user, q.account, q.query, q.page);
+  });
+  app.post("/api/repositories/activation", async (req) => {
+    const user = principal(req);
+    if (
+      config.auth.mode !== "github" ||
+      req.headers.origin !== new URL(config.auth.publicUrl).origin ||
+      !req.headers["content-type"]?.startsWith("application/json")
+    ) {
+      throw new GraftError(403, "Repository changes require a same-origin JSON request.");
+    }
+    const body = parse(
+      z.object({
+        repository: z.string().regex(/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/),
+        enabled: z.boolean(),
+        confirmation: z.string().max(140).optional(),
+      }),
+      req.body,
+    );
+    return graft?.activation(user, body.repository, body.enabled, body.confirmation);
   });
 
   app.all("/api/*", async (_req, reply) => notFound(reply, "No such API route."));

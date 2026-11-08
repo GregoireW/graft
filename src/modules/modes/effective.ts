@@ -2,6 +2,7 @@ import type { Config } from "../../config/index.js";
 import type { Db } from "../../db/client.js";
 import type { MutationGate } from "../../github/mutation-guard.js";
 import { type EffectiveModes, effectiveCeiling, effectiveModes } from "../../modes/index.js";
+import { repositoryEnabled } from "../repositories/filter.js";
 import {
   findActiveRepositoryByName,
   getRepositoryModeRow,
@@ -37,10 +38,22 @@ export async function getEffectiveModes(
  * The gate behind every Phase 1 write (D12): the mode is read at request time, never cached, so a
  * rollback takes effect on the next request.
  */
-export function mutationGate(db: Db, config: Pick<Config, "modeCeiling">): MutationGate {
+export function mutationGate(
+  db: Db,
+  config: Pick<Config, "modeCeiling"> & Partial<Pick<Config, "repositoryFilter">>,
+): MutationGate {
   return async ({ installationId, owner, repo, feature }) => {
     const row = await findActiveRepositoryByName(db, installationId, owner, repo);
     if (!row) return { allowed: false, reason: "repository_unknown" };
+    if (
+      !(await repositoryEnabled(
+        db,
+        { repositoryFilter: config.repositoryFilter ?? false },
+        row.repositoryId,
+        installationId,
+      ))
+    )
+      return { allowed: false, reason: "repository_disabled" };
     const modes = modesOf(row, config.modeCeiling);
     // Phase 1 step 2 (D11): a non-neutral `graft/policy` check needs policy_mode enforce.
     if (feature === "policy") {

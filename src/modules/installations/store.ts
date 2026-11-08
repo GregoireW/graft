@@ -121,6 +121,7 @@ export async function revokeTokensOnTransfer(
   if (!row) return 0;
   const moved = Number(row.installation_id) !== installationId;
   if (!moved && row.removed_at === null) return 0;
+  await ex.deleteFrom("enabled_repositories").where("repository_id", "=", repositoryId).execute();
   const revoked = await ex
     .updateTable("mcp_tokens")
     .set({
@@ -176,6 +177,11 @@ export async function markRepositoriesRemoved(
 ): Promise<void> {
   if (repoIds.length === 0) return;
   await ex
+    .deleteFrom("enabled_repositories")
+    .where("installation_id", "=", installationId)
+    .where("repository_id", "in", [...repoIds])
+    .execute();
+  await ex
     .updateTable("repositories")
     .set({ removed_at: now, updated_at: now })
     .where("installation_id", "=", installationId)
@@ -189,6 +195,10 @@ export async function markAllRepositoriesRemoved(
   installationId: number,
   now: Date,
 ): Promise<void> {
+  await ex
+    .deleteFrom("enabled_repositories")
+    .where("installation_id", "=", installationId)
+    .execute();
   await ex
     .updateTable("repositories")
     .set({ removed_at: now, updated_at: now })

@@ -7,7 +7,7 @@
 - **401 `invalid signature`**: `GITHUB_WEBHOOK_SECRET` differs from the App's webhook secret (or from the one `pnpm webhook:send` reads from `.env`).
 - **Duplicate deliveries**: GitHub redelivers on timeouts; the second delivery with the same `X-GitHub-Delivery` returns `200 {"status":"duplicate"}` and enqueues nothing. A delivery that failed with 500 is rolled back, so redelivering it is processed normally.
 - **Port 55432 already in use**: another process holds it; stop it or change the host port in `docker-compose.yml` and `DATABASE_URL` / `TEST_DATABASE_URL`.
-- **`run pnpm db:migrate`** on startup: the schema is behind; run the migration.
+- **`run pnpm db:migrate`** on worker startup: the schema is behind; start the server to apply migrations or run the migration explicitly. A server startup reporting `database migration failed; refusing to start` requires fixing the logged database or migration error before restarting.
 - **`Postgres not reachable ... run pnpm db:up`** from the integration tests: start the container.
 - **`Invalid configuration:` at startup**: the message lists each bad variable by name with its rule (values are never printed). Common ones: `GITHUB_APP_PRIVATE_KEY / GITHUB_APP_PRIVATE_KEY_PATH: set exactly one of them` (or `not both`), `GITHUB_APP_PRIVATE_KEY_PATH: file cannot be read` (run `openssl genrsa -out dev.pem 2048` for a local run), `GITHUB_WEBHOOK_SECRET: must be at least 16 characters`.
 - **`GITHUB_WEBHOOK_SECRET: is the .env.example placeholder`**: with `NODE_ENV=production` the shipped placeholder is refused. Generate a secret with `openssl rand -hex 32` and set the same value on the App.
