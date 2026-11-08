@@ -9,7 +9,27 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 ```
 
 !!! note "Work in progress"
-    This release ships the plumbing: the SDK, the export pipeline, the redaction and the shutdown flush. Spans for webhooks, jobs, GitHub calls, database queries and model calls, and metrics, come in the next releases. Until then an enabled deployment exports only the resource and no spans.
+    Requests, outgoing calls and database queries are traced. Spans for Graft's own work (jobs, intent and policy stages, model calls with their token counts) and metrics come in the next releases.
+
+## What is traced
+
+| Source | Span | Notes |
+| --- | --- | --- |
+| Incoming HTTP (Fastify) | `POST /webhooks/github`, `GET /mcp`... one SERVER span per request, named after the route | `/healthz` and `/readyz` are not traced. A `traceparent` header on the request is honoured, so a caller's trace continues into Graft. |
+| Outgoing HTTP (`fetch`) | `GET`, `POST`... one CLIENT span per call | GitHub (Octokit) and the model providers' APIs. The span keeps the host, method and status, never the path or query. A call that never connects (DNS failure, connection refused) has no span. |
+| Postgres (`pg`) | `pg.query:SELECT graft`... | Only inside another span: the queue's polling outside any trace is not recorded. Without the query text. |
+
+On the worker, jobs are not spans yet, so its GitHub and model calls each start a trace of their own and its queries are not recorded.
+
+## Logs and traces
+
+While a span is active, every log line carries its ids, so a log backend can link a line to its trace:
+
+```json
+{"level":30,"msg":"...","trace_id":"e974af16fd2f4a98e4f359e1f991e9c0","span_id":"9ec7d28cb20f33eb","trace_flags":"01"}
+```
+
+Without telemetry the lines are unchanged.
 
 ## How it is loaded
 
