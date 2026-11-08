@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { applyCronSchedules } from "../app/crons.js";
 import { buildAppRegistry } from "../app/registry.js";
 import { type Config, ConfigError, loadConfig } from "../config/index.js";
@@ -7,10 +8,11 @@ import { setGlobBackstopHook } from "../core/glob.js";
 import { createLogger } from "../core/logger.js";
 import { createSignals } from "../core/signals.js";
 import { createDb } from "../db/client.js";
-import { pendingMigrations } from "../db/migrator.js";
+import { migrateToLatest, pendingMigrations } from "../db/migrator.js";
 import { createGitHubClientFactory } from "../github/client-factory.js";
 import { createLlmClient } from "../llm/index.js";
 import { mutationGate } from "../modules/modes/index.js";
+import { repositoryEnabled } from "../modules/repositories/filter.js";
 import { nonAsciiCodePoints } from "../policy/globs.js";
 import { createPgBossQueue, type PgBossJobQueue } from "../queue/queue.js";
 import { loadDotEnv } from "./env.js";
@@ -20,7 +22,10 @@ export interface Bootstrapped extends AppDeps {
 }
 
 /** Shared wiring for the server and worker processes. Exits 1 when config/schema is wrong. */
-export async function bootstrap(opts: { supervise: boolean }): Promise<Bootstrapped> {
+export async function bootstrap(opts: {
+  supervise: boolean;
+  migrate?: boolean;
+}): Promise<Bootstrapped> {
   loadDotEnv();
   let config: Config;
   try {
@@ -51,6 +56,20 @@ export async function bootstrap(opts: { supervise: boolean }): Promise<Bootstrap
   });
   const db = createDb(config.databaseUrl);
 
+  if (opts.migrate) {
+    try {
+      const applied = await migrateToLatest(db);
+      log.info(
+        { applied },
+        applied.length ? "database migrations applied" : "database schema is current",
+      );
+    } catch (err) {
+      log.fatal({ err }, "database migration failed; refusing to start");
+      await db.destroy();
+      throw err;
+    }
+  }
+
   const pending = await pendingMigrations(db);
   if (pending.length > 0) {
     log.fatal({ pending }, "database schema is behind: run pnpm db:migrate");
@@ -78,6 +97,16 @@ export async function bootstrap(opts: { supervise: boolean }): Promise<Bootstrap
     baseUrl: config.githubApiUrl,
     // Phase 1 writes read the effective mode from the database at request time (D12).
     gate: mutationGate(db, config),
+    repositoryGate: async ({ installationId, owner, repo }) => {
+      if (!config.repositoryFilter) return true;
+      const row = await db
+        .selectFrom("repositories")
+        .select("id")
+        .where("installation_id", "=", installationId)
+        .where(sql<string>`lower(full_name)`, "=", `${owner}/${repo}`.toLowerCase())
+        .executeTakeFirst();
+      return row ? repositoryEnabled(db, config, Number(row.id), installationId) : false;
+    },
     onRefused: (e) =>
       log.error(
         { method: e.method, route: e.route, feature: e.feature, reason: e.refusal },

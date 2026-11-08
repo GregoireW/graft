@@ -15,6 +15,7 @@ export type Mode = "report" | "enforce";
 export interface Me {
   login: string;
   auth: "github" | "none";
+  repositoryManagement?: boolean;
 }
 
 export interface DaySummary {

@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { JobContext } from "../core/context.js";
+import { jobRepositoryEnabled } from "../modules/repositories/filter.js";
 
 export interface JobDefinition<T> {
   /** Dotted name, e.g. "github.webhook", "intent.generate". */
@@ -21,5 +22,14 @@ export interface JobDefinition<T> {
 }
 
 export function defineJob<T>(def: JobDefinition<T>): JobDefinition<T> {
-  return def;
+  return {
+    ...def,
+    async handle(data, ctx) {
+      if (!(await jobRepositoryEnabled(ctx.db, ctx.config, data))) {
+        ctx.log.info({ job: def.name, outcome: "repository_disabled" }, "repository job ignored");
+        return;
+      }
+      await def.handle(data, ctx);
+    },
+  };
 }

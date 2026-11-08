@@ -30,7 +30,7 @@ psql postgres://graft:graft@localhost:55432/graft \
 curl localhost:3000/readyz
 ```
 
-`.env.example` already points `GITHUB_APP_PRIVATE_KEY_PATH` at `./dev.pem`. Neither process runs migrations; if the schema is behind they exit with `run pnpm db:migrate`.
+`.env.example` already points `GITHUB_APP_PRIVATE_KEY_PATH` at `./dev.pem`. The server applies pending migrations on every startup before starting its queue or listening for requests; an up-to-date schema is a no-op, and migration failure stops startup. Its database role needs permission to run schema migrations. Workers only check the schema and exit with `run pnpm db:migrate` if it is behind, so start the server first or run migrations explicitly before starting workers.
 
 Other scripts: `pnpm db:status`, `pnpm db:rollback` (reverts only the latest migration), `pnpm format`, `pnpm build` then `pnpm start:server` / `pnpm start:worker`.
 

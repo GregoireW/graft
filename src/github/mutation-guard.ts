@@ -473,6 +473,11 @@ export function installMutationGuard(
     /** The factory's configured API base URL: the only host a write may go to. */
     baseUrl: string;
     gate: MutationGate;
+    repositoryGate?: (q: {
+      installationId: number;
+      owner: string;
+      repo: string;
+    }) => Promise<boolean>;
     /** Told about every refusal (the factory logs it at error). */
     onRefused?: (e: MutationRefusedError) => void;
   },
@@ -538,6 +543,18 @@ export function installMutationGuard(
       return;
     }
     if (!parsed.url.startsWith(`${base}/`)) throw refusal("unknown_route");
+    if (o.installationId !== null && o.repositoryGate && method !== "GET" && method !== "HEAD") {
+      const match = /^\/repos\/([^/]+)\/([^/]+)\//.exec(parsed.url.slice(base.length));
+      if (
+        match &&
+        !(await o.repositoryGate({
+          installationId: o.installationId,
+          owner: match[1] as string,
+          repo: match[2] as string,
+        }))
+      )
+        throw refusal("repository_disabled");
+    }
     const cls = classifyWrite(method, parsed.url.slice(base.length));
 
     switch (cls.kind) {
