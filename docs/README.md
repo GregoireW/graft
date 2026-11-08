@@ -13,6 +13,7 @@ New to Graft? Start with the [two-and-a-half-minute video](video.md): how it wor
 | [deploy/README.md](deploy/README.md) | Deploying Graft: the Docker image, its processes and secrets, pointing the App at it; guides for [Fly.io](deploy/fly.md) and [Coolify](deploy/coolify.md). |
 | [model-providers.md](model-providers.md) | Choosing, installing and checking a model provider: the Claude API, gateways, OpenAI-compatible and local models, CLI subscriptions, Copilot. |
 | [configuration.md](configuration.md) | Every environment variable with its default and rule, and the configuration files. |
+| [observability.md](observability.md) | OpenTelemetry: turning traces on with one endpoint variable, the preload, what is redacted. |
 | [troubleshooting.md](troubleshooting.md) | Common errors and what they mean. |
 
 ## Features

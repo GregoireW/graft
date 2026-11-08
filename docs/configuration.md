@@ -77,6 +77,10 @@ The server, the worker and the `pnpm graft` commands read their settings from th
 | `GRAFT_TRUST_PROXY` | empty | Phase 1 step 7 (D6). Comma-separated IP addresses or CIDR ranges (IPv4 or IPv6) of the proxies in front of the server. When the connection's peer is one of them, the client address is taken from `X-Forwarded-For`, so each MCP client behind the proxy has its own failed-authentication bucket. Empty: the peer is the client. `true`, hop counts and hostnames are refused (`ConfigError` naming the entry's position, never its value). List only the proxy's own addresses (for example `10.0.0.5`), never a network that holds clients: a client that connects from a listed address chooses its own. The proxy must append the peer address to `X-Forwarded-For` (nginx `$proxy_add_x_forwarded_for`) or overwrite it, and Graft must be reachable only through the proxy. |
 | `GRAFT_POLICY_CARD_WAIT_SECONDS` | `600` | Integer 0 to 3600. In enforce mode, how long `graft/policy` stays `in_progress` after a head is first evaluated while its intent card is still being written; after that it concludes on the conservative pending-card rules. `0` never waits. Report mode never waits (it still schedules the re-evaluation). See [Policy](features/policy.md#enforce-mode). |
 
+## Observability
+
+OpenTelemetry is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Graft reads only the standard `OTEL_*` variables, outside `src/config`, so a wrong value turns telemetry off with a line on stderr instead of stopping Graft. See [Observability](observability.md) for the list.
+
 ## Model providers
 
 By default Graft sends every model call to one Anthropic Messages API endpoint, configured with the `ANTHROPIC_*` variables. A **provider registry** lists several providers instead and says which one each role uses. This section is the reference; for a step-by-step guide per provider, see [Choosing a model provider](model-providers.md). It is operator configuration only: repositories cannot choose a provider in `graft.yaml`, because the provider decides where diffs go and who pays.

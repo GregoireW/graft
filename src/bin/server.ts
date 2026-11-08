@@ -1,4 +1,5 @@
 import { buildServer } from "../http/server.js";
+import { shutdownTelemetry } from "../telemetry/index.js";
 import { bootstrap } from "./bootstrap.js";
 
 async function main(): Promise<void> {
@@ -14,9 +15,11 @@ async function main(): Promise<void> {
       await app.close();
       await deps.queue.stop();
       await deps.db.destroy();
+      await shutdownTelemetry();
       process.exit(0);
     } catch (err) {
       deps.log.error({ err }, "error during shutdown");
+      await shutdownTelemetry();
       process.exit(1);
     }
   };
@@ -26,7 +29,8 @@ async function main(): Promise<void> {
   await app.listen({ host: deps.config.host, port: deps.config.port });
 }
 
-main().catch((err: unknown) => {
+main().catch(async (err: unknown) => {
   console.error(err);
+  await shutdownTelemetry();
   process.exit(1);
 });

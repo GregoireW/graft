@@ -22,8 +22,8 @@ primary_region = "cdg"
 
 # One image, two processes: the webhook server and the job worker.
 [processes]
-  app = "node dist/bin/server.js"
-  worker = "node dist/bin/worker.js"
+  app = "node --import ./dist/bin/otel.js dist/bin/server.js"
+  worker = "node --import ./dist/bin/otel.js dist/bin/worker.js"
 
 [http_service]
   internal_port = 3000

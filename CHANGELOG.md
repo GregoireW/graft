@@ -4,6 +4,10 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 
 ## Unreleased
 
+### Added
+
+- OpenTelemetry plumbing, off by default: the server and the worker start with `--import ./dist/bin/otel.js`, which starts the SDK when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and exports traces over OTLP (http/protobuf, http/json or gRPC), through an attribute allow-list that keeps URLs, query text and error messages out. Spans and metrics follow in the next releases. [Observability](docs/observability.md)
+
 ### Changed
 
 - The documentation, the website and the videos catch up with `v0.2.x`: the sample comment in the README and on the website is the current one, the reviewer tour is rebuilt on a new offline run with a new chapter on the verdict, and the explainer no longer says Graft only reports or that only Anthropic receives data. The pilot onboarding guide now speaks of the configured model provider.

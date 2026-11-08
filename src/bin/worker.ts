@@ -1,5 +1,6 @@
 import { publishModeCeiling } from "../modules/modes/index.js";
 import { startWorker } from "../queue/worker.js";
+import { shutdownTelemetry } from "../telemetry/index.js";
 import { bootstrap } from "./bootstrap.js";
 
 async function main(): Promise<void> {
@@ -18,9 +19,11 @@ async function main(): Promise<void> {
     try {
       await deps.queue.stop(); // boss.stop({ graceful: true, timeout: 10000 })
       await deps.db.destroy();
+      await shutdownTelemetry();
       process.exit(0);
     } catch (err) {
       deps.log.error({ err }, "error during shutdown");
+      await shutdownTelemetry();
       process.exit(1);
     }
   };
@@ -28,7 +31,8 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-main().catch((err: unknown) => {
+main().catch(async (err: unknown) => {
   console.error(err);
+  await shutdownTelemetry();
   process.exit(1);
 });
