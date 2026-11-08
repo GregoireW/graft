@@ -1,4 +1,5 @@
 import { SpanKind } from "@opentelemetry/api";
+import { recordGitHubRequest } from "../telemetry/metrics.js";
 import { withSpan } from "../telemetry/tracing.js";
 import type { GitHubClient } from "./client-factory.js";
 
@@ -61,6 +62,8 @@ function rateLimitRemaining(headers: unknown): number | null {
  */
 export function traceGitHub(octokit: GitHubClient, o: { installationId: number | null }): void {
   const words = knownRouteWords(octokit);
+  const rateLimitOf = (remaining: number | null) =>
+    remaining === null ? null : { remaining, installationId: o.installationId };
   octokit.hook.wrap("request", async (request, options) => {
     const method = String(options.method).toUpperCase();
     const route = githubRoute(String(options.url), words);
@@ -82,6 +85,7 @@ export function traceGitHub(octokit: GitHubClient, o: { installationId: number |
           span.setAttribute("http.response.status_code", res.status);
           const remaining = rateLimitRemaining(res.headers);
           if (remaining !== null) span.setAttribute("graft.github.rate_limit.remaining", remaining);
+          recordGitHubRequest(method, route, res.status, rateLimitOf(remaining));
           return res;
         } catch (err) {
           const e = err as { status?: unknown; response?: { headers?: unknown } };
@@ -89,6 +93,12 @@ export function traceGitHub(octokit: GitHubClient, o: { installationId: number |
             span.setAttribute("http.response.status_code", e.status);
           const remaining = rateLimitRemaining(e.response?.headers);
           if (remaining !== null) span.setAttribute("graft.github.rate_limit.remaining", remaining);
+          recordGitHubRequest(
+            method,
+            route,
+            typeof e.status === "number" ? e.status : null,
+            rateLimitOf(remaining),
+          );
           throw err;
         }
       },

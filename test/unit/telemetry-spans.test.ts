@@ -1,6 +1,12 @@
-import { context, propagation, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+import { context, metrics, propagation, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import {
   InMemorySpanExporter,
   type ReadableSpan,
@@ -19,7 +25,8 @@ import { PermanentJobError } from "../../src/queue/errors.js";
 import type { JobDefinition } from "../../src/queue/job.js";
 import { createPgBossQueue } from "../../src/queue/queue.js";
 import { startWorker } from "../../src/queue/worker.js";
-import { RedactingSpanExporter } from "../../src/telemetry/redact.js";
+import { observeQueueDepth, recordWebhookDelivery } from "../../src/telemetry/metrics.js";
+import { RedactingSpanExporter, redactingAttributesProcessor } from "../../src/telemetry/redact.js";
 import { TRACE_KEY, withSpan } from "../../src/telemetry/tracing.js";
 import { createRegistry } from "../../src/webhooks/registry.js";
 import { silentLog } from "../helpers/stubs.js";
@@ -30,12 +37,25 @@ const provider = new TracerProvider({
   spanProcessors: [new SimpleSpanProcessor({ exporter: new RedactingSpanExporter(memory) })],
 });
 
+const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: metricExporter,
+  exportIntervalMillis: 3_600_000,
+});
+const meterProvider = new MeterProvider({
+  readers: [metricReader],
+  views: [{ instrumentName: "*", attributesProcessors: [redactingAttributesProcessor] }],
+});
+
 beforeAll(() => {
+  metrics.setGlobalMeterProvider(meterProvider);
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
   propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   trace.setGlobalTracerProvider(provider);
 });
-afterAll(() => {
+afterAll(async () => {
+  await meterProvider.shutdown();
+  metrics.disable();
   trace.disable();
   propagation.disable();
   context.disable();
@@ -311,5 +331,101 @@ describe("GitHub calls", () => {
       "graft.github.rate_limit.remaining": 4998,
     });
     expect(JSON.stringify(spans())).not.toMatch(/secret|acme/);
+  });
+});
+
+describe("metrics", () => {
+  /** Every data point of one metric, as [attributes, value]. */
+  async function points(name: string): Promise<[Record<string, unknown>, unknown][]> {
+    metricExporter.reset();
+    await metricReader.forceFlush();
+    const found = metricExporter
+      .getMetrics()
+      .flatMap((rm) => rm.scopeMetrics.flatMap((sm) => sm.metrics))
+      .filter((m) => m.descriptor.name === name);
+    return found.flatMap((m) =>
+      (m.dataPoints as { attributes: Record<string, unknown>; value: unknown }[]).map(
+        (p) => [p.attributes, p.value] as [Record<string, unknown>, unknown],
+      ),
+    );
+  }
+
+  it("U-OTEL-17 jobs, model calls, GitHub requests, webhooks and queue depth are counted with bounded attributes", async () => {
+    // Earlier tests in this file ran jobs, model calls and GitHub requests: they are counted.
+    const runs = await points("graft.job.runs");
+    expect(runs).toContainEqual([
+      { "graft.job.name": "test.strict", "graft.job.outcome": "completed" },
+      1,
+    ]);
+    expect(runs).toContainEqual([
+      { "graft.job.name": "test.fail", "graft.job.outcome": "failed_permanently" },
+      1,
+    ]);
+    expect(runs).toContainEqual([
+      { "graft.job.name": "test.fail", "graft.job.outcome": "failed" },
+      1,
+    ]);
+
+    const tokens = await points("gen_ai.client.token.usage");
+    expect(tokens.map(([a]) => a)).toContainEqual({
+      "gen_ai.operation.name": "chat",
+      "gen_ai.provider.name": "openai",
+      "gen_ai.request.model": "claude-sonnet-5-5",
+      "graft.llm.purpose": "writer",
+      "gen_ai.token.type": "input",
+    });
+    expect(await points("graft.llm.cache_tokens")).toContainEqual([
+      {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.provider.name": "openai",
+        "gen_ai.request.model": "claude-sonnet-5-5",
+        "graft.llm.purpose": "writer",
+        "graft.llm.cache": "read",
+      },
+      1000,
+    ]);
+
+    const github = await points("graft.github.requests");
+    expect(github).toContainEqual([
+      {
+        "http.request.method": "GET",
+        "graft.github.route": "/repos/{owner}/{repo}/pulls/{pull_number}",
+        "http.response.status_code": 404,
+      },
+      1,
+    ]);
+    expect(await points("graft.github.rate_limit.remaining")).toContainEqual([
+      { "graft.github.auth": "installation", "graft.github.installation_id": 42 },
+      4998,
+    ]);
+
+    // The event header is only trusted, and only kept when it looks like an event, once verified.
+    recordWebhookDelivery(null, "invalid_signature");
+    recordWebhookDelivery("pull_request", "queued");
+    recordWebhookDelivery("<script>", "queued");
+    const deliveries = await points("graft.webhook.deliveries");
+    expect(deliveries).toEqual(
+      expect.arrayContaining([
+        [{ "graft.webhook.event": "unverified", "graft.webhook.outcome": "invalid_signature" }, 1],
+        [{ "graft.webhook.event": "pull_request", "graft.webhook.outcome": "queued" }, 1],
+        [{ "graft.webhook.event": "other", "graft.webhook.outcome": "queued" }, 1],
+      ]),
+    );
+
+    // Queue depth is read at collection; a failing read skips the round.
+    let fail = false;
+    observeQueueDepth(async () => {
+      if (fail) throw new Error("db down");
+      return [{ name: "intent.generate", readyCount: 3, deferredCount: 1, activeCount: 2 }];
+    });
+    expect(await points("graft.queue.jobs")).toEqual(
+      expect.arrayContaining([
+        [{ "messaging.destination.name": "intent.generate", "graft.queue.state": "ready" }, 3],
+        [{ "messaging.destination.name": "intent.generate", "graft.queue.state": "deferred" }, 1],
+        [{ "messaging.destination.name": "intent.generate", "graft.queue.state": "active" }, 2],
+      ]),
+    );
+    fail = true;
+    await expect(points("graft.queue.jobs")).resolves.toBeDefined();
   });
 });

@@ -1,4 +1,5 @@
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { recordLlmCall } from "../telemetry/metrics.js";
 import { withSpan } from "../telemetry/tracing.js";
 import type { LlmClient, LlmRequest, LlmResult } from "./types.js";
 
@@ -41,6 +42,19 @@ export function tracedLlm(client: LlmClient, provider: { kind: string; id?: stri
         },
         async (span) => {
           const res = await client.complete(req);
+          recordLlmCall(
+            {
+              "gen_ai.operation.name": "chat",
+              "gen_ai.provider.name": providerName,
+              "gen_ai.request.model": req.model,
+              "graft.llm.purpose": req.purpose,
+            },
+            {
+              seconds: res.durationMs / 1000,
+              failure: res.ok ? null : res.failure,
+              usage: res.usage,
+            },
+          );
           span.setAttributes({
             "gen_ai.response.model": res.model,
             "gen_ai.usage.input_tokens": res.usage.inputTokens,

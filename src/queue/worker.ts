@@ -1,6 +1,7 @@
 import { SpanKind } from "@opentelemetry/api";
 import type { JobWithMetadata } from "pg-boss";
 import type { JobContext } from "../core/context.js";
+import { observeQueueDepth, recordJobRun } from "../telemetry/metrics.js";
 import { contextFromCarrier, markError, takeTraceCarrier, withSpan } from "../telemetry/tracing.js";
 import type { Registry } from "../webhooks/registry.js";
 import { PermanentJobError, sanitizeError } from "./errors.js";
@@ -12,6 +13,7 @@ export async function startWorker(
   ctx: JobContext,
   opts: { concurrency: number; pollingIntervalSeconds?: number },
 ): Promise<void> {
+  observeQueueDepth(() => queue.boss.getQueues());
   for (const job of registry.jobs) {
     await queue.boss.work(
       job.name,
@@ -47,6 +49,8 @@ export async function startWorker(
               },
             },
             async (span) => {
+              const startedAt = performance.now();
+              let outcome = "failed";
               try {
                 const data = job.schema.parse(raw);
                 await job.handle(data, {
@@ -54,15 +58,17 @@ export async function startWorker(
                   log,
                   attempt: { retryCount: j.retryCount, retryLimit: j.retryLimit },
                 });
-                span.setAttribute("graft.job.outcome", "completed");
+                outcome = "completed";
+                span.setAttribute("graft.job.outcome", outcome);
               } catch (thrown) {
                 // Octokit/SDK errors carry request and response bodies (possibly model output), and
                 // both pino and pg-boss serialize them: only the sanitized error leaves this block.
                 const err = sanitizeError(thrown);
                 if (thrown instanceof PermanentJobError) {
                   // Retrying cannot help: log and return so pg-boss completes the job.
+                  outcome = "failed_permanently";
                   span.setAttributes({
-                    "graft.job.outcome": "failed_permanently",
+                    "graft.job.outcome": outcome,
                     "graft.job.failure_reason": thrown.reason,
                   });
                   markError(span, thrown);
@@ -77,6 +83,8 @@ export async function startWorker(
                 markError(span, thrown);
                 log.error({ err }, "job failed");
                 throw err;
+              } finally {
+                recordJobRun(job.name, outcome, (performance.now() - startedAt) / 1000);
               }
             },
           );

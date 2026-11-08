@@ -9,6 +9,7 @@ import { upsertManagedSection } from "../../github/managed-comment.js";
 import { resolveBaseCommit } from "../../policy/load.js";
 import { PermanentJobError } from "../../queue/errors.js";
 import { defineJob } from "../../queue/job.js";
+import { recordCard, recordOutcome } from "../../telemetry/metrics.js";
 import { annotate, withSpan } from "../../telemetry/tracing.js";
 import { type Change, getChange, type LivePull, upsertChangeFromPull } from "../changes/index.js";
 import { ensureRepository, getActiveInstallation } from "../installations/index.js";
@@ -346,6 +347,15 @@ export async function generateIntent(data: GenerateData, ctx: JobContext): Promi
         async (span) => {
           const r = await runCard(prepared, ctx.llm, opts);
           span.setAttributes(cardAttributes(r));
+          recordCard(
+            {
+              "graft.card.status": r.status,
+              "graft.card.risk": r.risk.final,
+              "graft.card.verifier": r.verifier.status,
+              ...(r.failureReason ? { "graft.card.failure_reason": r.failureReason } : {}),
+            },
+            r.costUsd,
+          );
           return r;
         },
       );
@@ -487,6 +497,8 @@ export const intentGenerateJob = defineJob<GenerateData>({
   schema: generateSchema,
   options: { retryLimit: 5, retryDelaySeconds: 30, retryBackoff: true, expireInSeconds: 900 },
   async handle(data, ctx) {
-    annotate({ "graft.outcome": await generateIntent(data, ctx) });
+    const outcome = await generateIntent(data, ctx);
+    annotate({ "graft.outcome": outcome });
+    recordOutcome(INTENT_GENERATE_JOB, outcome);
   },
 });
