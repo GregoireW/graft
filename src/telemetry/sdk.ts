@@ -7,6 +7,7 @@ import {
   type SpanExporter,
 } from "@opentelemetry/sdk-trace";
 import { setRunningTelemetry } from "./index.js";
+import { graftInstrumentations } from "./instrumentations.js";
 import { RedactingSpanExporter } from "./redact.js";
 import type { OtlpProtocol, TelemetrySettings } from "./settings.js";
 
@@ -31,7 +32,7 @@ export async function startTelemetry(settings: Enabled): Promise<void> {
     // Traces only for now. Metrics come with Graft's own instruments; logs already reach stdout.
     metricReaders: [],
     logRecordProcessors: [],
-    instrumentations: [],
+    instrumentations: graftInstrumentations(),
   });
   sdk.start();
   setRunningTelemetry(sdk);

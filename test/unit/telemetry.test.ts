@@ -2,13 +2,14 @@ import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
   TracerProvider,
 } from "@opentelemetry/sdk-trace";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { traceFields } from "../../src/core/logger.js";
 import {
   setRunningTelemetry,
   shutdownTelemetry,
@@ -184,26 +185,20 @@ describe("telemetry preload", () => {
     server = undefined;
   });
 
-  function child(env: Record<string, string>) {
+  function child(env: Record<string, string>, script = "test/helpers/otel-child.ts") {
     const base: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) {
       if (v !== undefined && !k.startsWith("OTEL_")) base[k] = v;
     }
-    return run(
-      process.execPath,
-      ["--import", "tsx", "--import", "./src/bin/otel.ts", "test/helpers/otel-child.ts"],
-      { env: { ...base, ...env }, timeout: 60000 },
-    );
+    return run(process.execPath, ["--import", "tsx", "--import", "./src/bin/otel.ts", script], {
+      env: { ...base, ...env },
+      timeout: 60000,
+    });
   }
 
-  it("U-OTEL-7 with no endpoint the preload starts nothing and prints nothing", async () => {
-    const { stdout, stderr } = await child({});
-    expect(JSON.parse(stdout.trim())).toEqual({ running: false });
-    expect(stderr).toBe("");
-  });
-
-  it("U-OTEL-8 with an endpoint, redacted spans reach the collector before the process exits", async () => {
-    const bodies: unknown[] = [];
+  /** A local OTLP/HTTP JSON receiver; returns the endpoint and every span it received. */
+  async function receiver() {
+    const bodies: OtlpBody[] = [];
     server = createServer((req, res) => {
       let raw = "";
       req.on("data", (chunk) => {
@@ -216,9 +211,23 @@ describe("telemetry preload", () => {
     });
     await new Promise<void>((resolve) => server?.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
+    const spans = () =>
+      bodies.flatMap((b) =>
+        b.resourceSpans.flatMap((rs) => rs.scopeSpans.flatMap((ss) => ss.spans)),
+      );
+    return { endpoint: `http://127.0.0.1:${port}`, bodies, spans };
+  }
 
+  it("U-OTEL-7 with no endpoint the preload starts nothing and prints nothing", async () => {
+    const { stdout, stderr } = await child({});
+    expect(JSON.parse(stdout.trim())).toEqual({ running: false });
+    expect(stderr).toBe("");
+  });
+
+  it("U-OTEL-8 with an endpoint, redacted spans reach the collector before the process exits", async () => {
+    const { endpoint, bodies } = await receiver();
     const { stdout } = await child({
-      OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+      OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=test",
     });
@@ -232,4 +241,84 @@ describe("telemetry preload", () => {
     expect(sent).not.toContain("secret");
     expect(sent).not.toContain("url.full");
   });
+
+  it("U-OTEL-9 Fastify, fetch and pg spans join one trace; probes and parentless queries are not traced", async () => {
+    const { endpoint, bodies, spans: received } = await receiver();
+    const { stdout } = await child(
+      { OTEL_EXPORTER_OTLP_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_PROTOCOL: "http/json" },
+      "test/helpers/otel-auto-child.ts",
+    );
+    const { lines } = JSON.parse(stdout.trim()) as { lines: Record<string, unknown>[] };
+    const spans = received();
+
+    // The request's SERVER span, named after the route, under the caller's fetch.
+    const request = spans.find((s) => s.name === "GET /changes/:id");
+    expect(request?.kind).toBe(2); // SERVER in OTLP's numbering
+    const trace = spans.filter((s) => s.traceId === request?.traceId);
+    const caller = trace.find((s) => s.spanId === request?.parentSpanId);
+    expect(caller?.name).toBe("GET");
+    expect(caller?.kind).toBe(3); // CLIENT
+
+    // Inside the request: the query and the outgoing fetch, as children of the request span.
+    const children = trace.filter((s) => s.parentSpanId === request?.spanId);
+    expect(children.map((s) => s.name).sort()).toEqual([
+      "GET",
+      expect.stringMatching(/^pg\.query/),
+    ]);
+
+    // Only the request's own query is traced (requireParentSpan), and no probe has a span.
+    expect(spans.filter((s) => s.name.startsWith("pg."))).toHaveLength(1);
+    expect(spans.filter((s) => s.name.startsWith("GET /healthz"))).toHaveLength(0);
+    expect(spans.filter((s) => s.kind === 2)).toHaveLength(1);
+
+    // Paths, query strings and SQL never leave.
+    const sent = JSON.stringify(bodies);
+    expect(sent).not.toContain("secret");
+    expect(sent).not.toContain("url.path");
+    expect(sent).not.toContain("db.query.text");
+    expect(sent).toContain('"http.route"');
+
+    // Log lines in the request carry its trace; the line outside it does not.
+    const handling = lines.find((l) => l.msg === "handling a change");
+    expect(handling?.trace_id).toBe(request?.traceId);
+    expect(handling?.span_id).toBe(request?.spanId);
+    expect(handling?.trace_flags).toBe("01");
+    expect(lines.find((l) => l.msg === "outside a request")).not.toHaveProperty("trace_id");
+  });
 });
+
+describe("log correlation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("U-OTEL-10 traceFields is empty without an active span and names the active one", () => {
+    expect(traceFields()).toEqual({});
+
+    const span = new TracerProvider().getTracer("test").startSpan("work");
+    vi.spyOn(trace, "getActiveSpan").mockReturnValue(span);
+    expect(traceFields()).toEqual({
+      trace_id: span.spanContext().traceId,
+      span_id: span.spanContext().spanId,
+      trace_flags: "01",
+    });
+    span.end();
+
+    // An invalid (all-zero) context is never logged.
+    vi.spyOn(trace, "getActiveSpan").mockReturnValue(
+      trace.wrapSpanContext({ traceId: "0".repeat(32), spanId: "0".repeat(16), traceFlags: 0 }),
+    );
+    expect(traceFields()).toEqual({});
+  });
+});
+
+interface OtlpSpan {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  kind: number;
+}
+interface OtlpBody {
+  resourceSpans: { scopeSpans: { spans: OtlpSpan[] }[] }[];
+}

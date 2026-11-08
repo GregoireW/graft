@@ -7,6 +7,7 @@ Graft's releases. Until both the Phase 0 and the Phase 1 gates pass on pilot dat
 ### Added
 
 - OpenTelemetry plumbing, off by default: the server and the worker start with `--import ./dist/bin/otel.js`, which starts the SDK when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and exports traces over OTLP (http/protobuf, http/json or gRPC), through an attribute allow-list that keeps URLs, query text and error messages out. Spans and metrics follow in the next releases. [Observability](docs/observability.md)
+- With telemetry on, incoming requests (except `/healthz` and `/readyz`), outgoing `fetch` calls (GitHub, model providers) and Postgres queries made inside a trace are traced, and every log line written while a span is active carries `trace_id`, `span_id` and `trace_flags`. [Observability](docs/observability.md#what-is-traced)
 
 ### Changed
 
