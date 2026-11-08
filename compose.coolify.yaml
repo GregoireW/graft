@@ -41,6 +41,8 @@ x-graft-env: &graft-env
   OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-}
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-}
+  OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-}
 
 # Each Graft service builds the same Dockerfile; they share the build cache. Do not give them a
 # common `image:` name: Coolify builds services in parallel and a shared tag makes all but one fail.

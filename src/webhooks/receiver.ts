@@ -7,6 +7,7 @@ import type { Db } from "../db/client.js";
 import { repositoryEnabled } from "../modules/repositories/filter.js";
 import { sanitizeError } from "../queue/errors.js";
 import type { JobQueue } from "../queue/queue.js";
+import { recordWebhookDelivery } from "../telemetry/metrics.js";
 import { checkAccount } from "./accounts.js";
 import { recordDelivery } from "./deliveries.js";
 import type { Registry } from "./registry.js";
@@ -68,17 +69,20 @@ export const webhookReceiver =
 
         if (!event || !deliveryId || !signature) {
           log.warn({ outcome: "bad_request" }, "webhook missing required header");
+          recordWebhookDelivery(null, "bad_request");
           return reply.code(400).send({ error: "missing required header" });
         }
 
         if (deliveryId.length > MAX_DELIVERY_ID_LENGTH) {
           log.warn({ outcome: "bad_request" }, "webhook delivery id too long");
+          recordWebhookDelivery(null, "bad_request");
           return reply.code(400).send({ error: "invalid delivery id" });
         }
 
         const rawBody = req.body as string;
         if (rawBody.length === 0) {
           log.warn({ outcome: "bad_request" }, "webhook body is empty");
+          recordWebhookDelivery(null, "bad_request");
           return reply.code(400).send({ error: "empty body" });
         }
         let valid = false;
@@ -89,6 +93,7 @@ export const webhookReceiver =
         }
         if (!valid) {
           log.warn({ outcome: "invalid_signature" }, "webhook signature rejected");
+          recordWebhookDelivery(null, "invalid_signature");
           return reply.code(401).send({ error: "invalid signature" });
         }
 
@@ -100,6 +105,7 @@ export const webhookReceiver =
         }
         if (!payload) {
           log.warn({ outcome: "invalid_json" }, "webhook body is not a JSON object");
+          recordWebhookDelivery(event, "invalid_json");
           return reply.code(400).send({ error: "invalid JSON" });
         }
 
@@ -138,6 +144,7 @@ export const webhookReceiver =
                   ),
               );
             }
+            recordWebhookDelivery(event, "account_not_allowed");
             return reply.code(202).send({ status: "ignored" });
           }
           if (
@@ -150,6 +157,7 @@ export const webhookReceiver =
               { repositoryId, outcome: "repository_disabled" },
               "repository webhook ignored",
             );
+            recordWebhookDelivery(event, "repository_disabled");
             return reply.code(202).send({ status: "ignored" });
           }
           const outcome = await recordDelivery(deps, {
@@ -161,6 +169,7 @@ export const webhookReceiver =
             payload,
           });
           log.info({ action, installationId, outcome }, "webhook processed");
+          recordWebhookDelivery(event, outcome);
           if (outcome === "duplicate") return reply.code(200).send({ status: "duplicate" });
           return reply.code(202).send({ status: outcome });
         } catch (err) {
@@ -168,6 +177,7 @@ export const webhookReceiver =
             { err: sanitizeError(err), action, installationId, outcome: "error" },
             "webhook processing failed",
           );
+          recordWebhookDelivery(event, "error");
           return reply.code(500).send({ error: "internal error" });
         }
       },

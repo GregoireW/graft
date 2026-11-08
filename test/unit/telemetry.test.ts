@@ -34,6 +34,7 @@ describe("telemetry settings", () => {
       exporter: "otlp",
       protocol: "http/protobuf",
       serviceName: "graft-worker",
+      metrics: { exporter: "otlp", protocol: "http/protobuf", intervalMs: 60000 },
     });
     expect(
       telemetrySettings({ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://c:4318/v1/traces" }, ARGV)
@@ -73,6 +74,40 @@ describe("telemetry settings", () => {
     ).toEqual({
       enabled: false,
       problem: "OTEL_EXPORTER_OTLP_PROTOCOL must be one of http/protobuf, http/json or grpc",
+    });
+  });
+
+  it("U-OTEL-16 metrics follow traces; OTEL_METRICS_EXPORTER, the metrics protocol and the interval adjust them", () => {
+    const endpoint = { OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318" };
+    const metricsOf = (env: Record<string, string>) => {
+      const s = telemetrySettings(env, ARGV);
+      return s.enabled ? s.metrics : s;
+    };
+    expect(metricsOf({ ...endpoint, OTEL_METRICS_EXPORTER: "none" })).toBeNull();
+    expect(metricsOf({ OTEL_TRACES_EXPORTER: "console" })).toEqual({
+      exporter: "console",
+      protocol: "http/protobuf",
+      intervalMs: 60000,
+    });
+    // Console traces, OTLP metrics without an endpoint: no metrics, traces still on.
+    expect(
+      metricsOf({ OTEL_TRACES_EXPORTER: "console", OTEL_METRICS_EXPORTER: "otlp" }),
+    ).toBeNull();
+    expect(
+      metricsOf({
+        ...endpoint,
+        OTEL_EXPORTER_OTLP_PROTOCOL: "grpc",
+        OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
+        OTEL_METRIC_EXPORT_INTERVAL: "15000",
+      }),
+    ).toEqual({ exporter: "otlp", protocol: "http/json", intervalMs: 15000 });
+    expect(metricsOf({ ...endpoint, OTEL_METRICS_EXPORTER: "prometheus" })).toEqual({
+      enabled: false,
+      problem: "OTEL_METRICS_EXPORTER must be one of otlp, console or none",
+    });
+    expect(metricsOf({ ...endpoint, OTEL_METRIC_EXPORT_INTERVAL: "5s" })).toEqual({
+      enabled: false,
+      problem: "OTEL_METRIC_EXPORT_INTERVAL must be a whole number of milliseconds, at least 1000",
     });
   });
 
@@ -199,6 +234,7 @@ describe("telemetry preload", () => {
   /** A local OTLP/HTTP JSON receiver; returns the endpoint and every span it received. */
   async function receiver() {
     const bodies: OtlpBody[] = [];
+    const metricBodies: unknown[] = [];
     server = createServer((req, res) => {
       let raw = "";
       req.on("data", (chunk) => {
@@ -206,6 +242,7 @@ describe("telemetry preload", () => {
       });
       req.on("end", () => {
         if (req.url === "/v1/traces") bodies.push(JSON.parse(raw));
+        if (req.url === "/v1/metrics") metricBodies.push(JSON.parse(raw));
         res.writeHead(200, { "content-type": "application/json" }).end("{}");
       });
     });
@@ -215,7 +252,7 @@ describe("telemetry preload", () => {
       bodies.flatMap((b) =>
         b.resourceSpans.flatMap((rs) => rs.scopeSpans.flatMap((ss) => ss.spans)),
       );
-    return { endpoint: `http://127.0.0.1:${port}`, bodies, spans };
+    return { endpoint: `http://127.0.0.1:${port}`, bodies, metricBodies, spans };
   }
 
   it("U-OTEL-7 with no endpoint the preload starts nothing and prints nothing", async () => {
@@ -225,7 +262,7 @@ describe("telemetry preload", () => {
   });
 
   it("U-OTEL-8 with an endpoint, redacted spans reach the collector before the process exits", async () => {
-    const { endpoint, bodies } = await receiver();
+    const { endpoint, bodies, metricBodies } = await receiver();
     const { stdout } = await child({
       OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
@@ -240,6 +277,15 @@ describe("telemetry preload", () => {
     expect(sent).toContain("graft.job.name");
     expect(sent).not.toContain("secret");
     expect(sent).not.toContain("url.full");
+
+    // Metrics are flushed at shutdown too, through the same allow-list.
+    const metricsSent = JSON.stringify(metricBodies);
+    expect(metricsSent).toContain("graft.job.runs");
+    expect(metricsSent).toContain("graft.job.outcome");
+    expect(metricsSent).toContain("child.requests");
+    expect(metricsSent).toContain("http.request.method");
+    expect(metricsSent).not.toContain("url.full");
+    expect(metricsSent).not.toContain("secret");
   });
 
   it("U-OTEL-9 Fastify, fetch and pg spans join one trace; probes and parentless queries are not traced", async () => {

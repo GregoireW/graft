@@ -4,8 +4,9 @@ import { basename, extname } from "node:path";
  * Whether and how to start OpenTelemetry, from the standard `OTEL_*` variables only.
  *
  * Telemetry is off unless an OTLP endpoint is set (or `OTEL_TRACES_EXPORTER=console`, for local
- * debugging). `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none` turn it off again. Everything
- * else the OTLP exporter reads itself: headers, timeout, compression, certificates.
+ * debugging). `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none` turn it off again; metrics
+ * come with traces unless `OTEL_METRICS_EXPORTER=none`. Everything else the OTLP exporters read
+ * themselves: headers, timeout, compression, certificates.
  */
 export type TelemetrySettings =
   | {
@@ -14,6 +15,8 @@ export type TelemetrySettings =
       protocol: OtlpProtocol;
       /** Default `service.name`; `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` override it. */
       serviceName: string;
+      /** Null when metrics are off (`OTEL_METRICS_EXPORTER=none`, or OTLP without an endpoint). */
+      metrics: MetricsSettings | null;
     }
   | {
       enabled: false;
@@ -22,6 +25,15 @@ export type TelemetrySettings =
     };
 
 export type OtlpProtocol = "http/protobuf" | "http/json" | "grpc";
+
+export interface MetricsSettings {
+  exporter: "otlp" | "console";
+  protocol: OtlpProtocol;
+  /** `OTEL_METRIC_EXPORT_INTERVAL`, default one minute. */
+  intervalMs: number;
+}
+
+const DEFAULT_METRIC_INTERVAL_MS = 60_000;
 
 const PROTOCOLS: readonly OtlpProtocol[] = ["http/protobuf", "http/json", "grpc"];
 
@@ -66,7 +78,42 @@ export function telemetrySettings(env: Env, argv: readonly string[]): TelemetryS
     };
   }
 
-  return { enabled: true, exporter, protocol, serviceName: defaultServiceName(argv) };
+  const metrics = metricsSettings(env, exporter);
+  if (typeof metrics === "string") return { enabled: false, problem: metrics };
+
+  return { enabled: true, exporter, protocol, serviceName: defaultServiceName(argv), metrics };
+}
+
+/** Metrics follow the trace exporter unless `OTEL_METRICS_EXPORTER` says otherwise. */
+function metricsSettings(
+  env: Env,
+  tracesExporter: "otlp" | "console",
+): MetricsSettings | null | string {
+  const named = value(env, "OTEL_METRICS_EXPORTER")?.toLowerCase();
+  if (named === "none") return null;
+  if (named !== undefined && named !== "otlp" && named !== "console") {
+    return "OTEL_METRICS_EXPORTER must be one of otlp, console or none";
+  }
+  const exporter = named ?? tracesExporter;
+  if (
+    exporter === "otlp" &&
+    !value(env, "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") &&
+    !value(env, "OTEL_EXPORTER_OTLP_ENDPOINT")
+  ) {
+    return null;
+  }
+  const protocol = (value(env, "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL") ??
+    value(env, "OTEL_EXPORTER_OTLP_PROTOCOL") ??
+    "http/protobuf") as OtlpProtocol;
+  if (!PROTOCOLS.includes(protocol)) {
+    return "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL must be one of http/protobuf, http/json or grpc";
+  }
+  const rawInterval = value(env, "OTEL_METRIC_EXPORT_INTERVAL");
+  const intervalMs = rawInterval === undefined ? DEFAULT_METRIC_INTERVAL_MS : Number(rawInterval);
+  if (!Number.isInteger(intervalMs) || intervalMs < 1000) {
+    return "OTEL_METRIC_EXPORT_INTERVAL must be a whole number of milliseconds, at least 1000";
+  }
+  return { exporter, protocol, intervalMs };
 }
 
 /** `graft-server` for `node dist/bin/server.js`, `graft-worker` for the worker. */

@@ -2,14 +2,11 @@
 
 [Docs index](README.md) · [Configuration](configuration.md) · [Deploying](deploy/README.md)
 
-The server and the worker can send traces to any OpenTelemetry collector or OTLP backend (an OpenTelemetry Collector, OpenObserve, Grafana Tempo, Jaeger, Honeycomb and others). It is off by default. One variable turns it on:
+The server and the worker can send traces and metrics to any OpenTelemetry collector or OTLP backend (an OpenTelemetry Collector, OpenObserve, Grafana Tempo, Jaeger, Honeycomb and others). It is off by default. One variable turns it on:
 
 ```sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 ```
-
-!!! note "Work in progress"
-    Traces are complete. Metrics come in the next release.
 
 ## What is traced
 
@@ -27,6 +24,27 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 ### One trace per webhook
 
 A job carries the trace context of the code that queued it, so a webhook and everything it causes form one trace: `POST /webhooks/github` → `job github.webhook` → `job intent.generate` → the GitHub reads, the model calls, `change.lock` and the comment write → `job policy.evaluate` → ... The context travels in the job's data under `_otel` (only the W3C `traceparent` and `tracestate`), and the worker removes it before the job reads its data. Cron jobs start a trace of their own.
+
+## Metrics
+
+Sent every minute (`OTEL_METRIC_EXPORT_INTERVAL`) to the same endpoint, at `/v1/metrics`. Every attribute is a bounded set of values: job names, outcomes, models, routes. Never a repository, a login or a PR number.
+
+| Metric | Type | Attributes | What it tells |
+| --- | --- | --- | --- |
+| `graft.job.runs` | counter | `graft.job.name`, `graft.job.outcome` | Runs per job: `completed`, `failed` (pg-boss retries it) or `failed_permanently`. |
+| `graft.job.duration` | histogram (s) | same | How long runs take. |
+| `graft.queue.jobs` | gauge | `messaging.destination.name`, `graft.queue.state` | Jobs `ready`, `deferred` and `active` per queue, read from pg-boss at each export. Worker only. A growing `ready` count means the workers do not keep up. |
+| `graft.webhook.deliveries` | counter | `graft.webhook.event`, `graft.webhook.outcome` | Deliveries by outcome (`queued`, `duplicate`, `invalid_signature`, `account_not_allowed`...). The event is `unverified` until the signature checks out. |
+| `graft.outcomes` | counter | `graft.job.name`, `graft.outcome` | What intent and policy runs ended with (`published`, `stale`, `skipped`...). |
+| `graft.intent.cards` | counter | `graft.card.status`, `graft.card.risk`, `graft.card.verifier`, `graft.card.failure_reason` | Cards generated, with their risk and the verifier's verdict. |
+| `graft.intent.cost` | counter (USD) | `graft.card.status` | What the cards' model calls cost, priced like the spend ledger. |
+| `gen_ai.client.operation.duration` | histogram (s) | `gen_ai.provider.name`, `gen_ai.request.model`, `graft.llm.purpose`, `error.type` | Model call latency, failures included. |
+| `gen_ai.client.token.usage` | histogram | same, plus `gen_ai.token.type` (`input`, `output`) | Tokens per call. |
+| `graft.llm.cache_tokens` | counter | same, plus `graft.llm.cache` (`read`, `write`) | Prompt-cache use. |
+| `graft.github.requests` | counter | `http.request.method`, `graft.github.route`, `http.response.status_code` | GitHub API calls by route and status. |
+| `graft.github.rate_limit.remaining` | gauge | `graft.github.auth`, `graft.github.installation_id` | Rate-limit headroom per installation, as of its last response. |
+
+The instrumentations add their own: `http.client.request.duration` for `fetch`, and `db.client.operation.duration` and the connection pool's `db.client.connection.*` (by `idle` or `used` state) for Postgres. Metric attributes go through the same allow-list as span attributes.
 
 ## Logs and traces
 
@@ -64,10 +82,12 @@ Graft reads the standard [OpenTelemetry variables](https://opentelemetry.io/docs
 | `OTEL_RESOURCE_ATTRIBUTES` | unset | Extra resource attributes, for example `deployment.environment.name=production`. `service.version` is Graft's version. |
 | `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Keep every trace by default. `parentbased_traceidratio` with `0.1` keeps one in ten. |
 | `OTEL_TRACES_EXPORTER` | `otlp` | `console` prints spans on stdout instead (no endpoint needed), `none` turns telemetry off. |
+| `OTEL_METRICS_EXPORTER` | as traces | `none` turns metrics off and keeps traces; `console` prints them on stdout. `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` override the shared endpoint and protocol. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Milliseconds between two metric exports, at least `1000`. |
 | `OTEL_SDK_DISABLED` | `false` | `true` turns telemetry off even with an endpoint set. |
 | `OTEL_LOG_LEVEL` | unset | The SDK's own diagnostics on stderr, for example `info` while a collector does not receive anything. |
 
-Timeouts, compression and certificates use the exporter's own `OTEL_EXPORTER_OTLP_*` variables. Only traces are exported for now: Graft's logs stay JSON on stdout, where a log shipper already reads them.
+Timeouts, compression and certificates use the exporter's own `OTEL_EXPORTER_OTLP_*` variables. Logs are not exported: they stay JSON on stdout, where a log shipper already reads them, with the trace ids on each line.
 
 ## What leaves Graft
 
@@ -87,4 +107,4 @@ environment:
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
 ```
 
-The collector needs an `otlp` receiver and a `traces` pipeline. Sending straight to a backend works too: set its OTLP URL as the endpoint and its credentials in `OTEL_EXPORTER_OTLP_HEADERS`. A collector gives you retries and a disk queue when the backend is down; the SDK only buffers in memory.
+The collector needs an `otlp` receiver and a `traces` pipeline, plus a `metrics` pipeline for the metrics. Sending straight to a backend works too: set its OTLP URL as the endpoint and its credentials in `OTEL_EXPORTER_OTLP_HEADERS`. A collector gives you retries and a disk queue when the backend is down; the SDK only buffers in memory.

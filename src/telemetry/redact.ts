@@ -1,4 +1,5 @@
 import type { Attributes } from "@opentelemetry/api";
+import type { IAttributesProcessor } from "@opentelemetry/sdk-metrics";
 import type { ReadableSpan, SpanExporter, TimedEvent } from "@opentelemetry/sdk-trace";
 
 /**
@@ -40,6 +41,7 @@ const ALLOWED_KEYS = new Set<string>([
   "db.operation.name",
   "db.collection.name",
   "db.response.status_code",
+  "db.client.connection.state",
   // Queues.
   "messaging.system",
   "messaging.operation.name",
@@ -57,6 +59,7 @@ const ALLOWED_KEYS = new Set<string>([
   "gen_ai.usage.output_tokens",
   "gen_ai.usage.cache_read.input_tokens",
   "gen_ai.usage.cache_creation.input_tokens",
+  "gen_ai.token.type",
 ]);
 
 /** Prefixes kept as they are: Graft's own attributes, which Graft code writes and reviews. */
@@ -118,3 +121,8 @@ export class RedactingSpanExporter implements SpanExporter {
     return this.inner.forceFlush?.() ?? Promise.resolve();
   }
 }
+
+/** The allow-list for metric data points: a View's attributes processor. */
+export const redactingAttributesProcessor: IAttributesProcessor = {
+  process: (incoming) => redactAttributes(incoming),
+};
