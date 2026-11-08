@@ -4,6 +4,7 @@ import type { Db as PgBossDb, Queue as PgBossQueue, SendOptions } from "pg-boss"
 import { PgBoss } from "pg-boss";
 import type { Logger } from "../core/logger.js";
 import type { Database } from "../db/schema.js";
+import { withTraceCarrier } from "../telemetry/tracing.js";
 import type { Registry } from "../webhooks/registry.js";
 import { sanitizeError } from "./errors.js";
 import type { JobDefinition } from "./job.js";
@@ -162,7 +163,8 @@ export function createPgBossQueue(o: PgBossQueueOptions): PgBossJobQueue {
         sendOpts.id = singletonJobId(job.name, opts.singletonKey);
       }
       if (opts?.startAfterSeconds !== undefined) sendOpts.startAfter = opts.startAfterSeconds;
-      return boss.send(job.name, parsed as object, sendOpts);
+      // After the parse: the carrier is not part of the job's schema. The worker strips it.
+      return boss.send(job.name, withTraceCarrier(parsed as object), sendOpts);
     },
     async schedule(job, cron, data) {
       const parsed = job.schema.parse(data);

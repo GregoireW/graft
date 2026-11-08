@@ -4,6 +4,7 @@
  * or model output.
  */
 import { createHash } from "node:crypto";
+import type { Attributes } from "@opentelemetry/api";
 import type { Config } from "../../config/index.js";
 import type { Logger } from "../../core/logger.js";
 import type { RiskClass } from "../../db/schema.js";
@@ -145,6 +146,18 @@ export interface CardResult {
    */
   costUsd?: number | null;
   inputs: InputStats;
+}
+
+/** A card's outcome as span attributes: statuses, risk, call count and cost; never its text. */
+export function cardAttributes(r: CardResult): Attributes {
+  return {
+    "graft.card.status": r.status,
+    ...(r.failureReason ? { "graft.card.failure_reason": r.failureReason } : {}),
+    "graft.card.risk": r.risk.final,
+    "graft.card.verifier": r.verifier.status,
+    "graft.card.calls": r.usage.calls,
+    ...(typeof r.costUsd === "number" ? { "graft.card.cost_usd": r.costUsd } : {}),
+  };
 }
 
 export interface PreparedCard {

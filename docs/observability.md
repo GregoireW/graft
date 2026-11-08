@@ -9,7 +9,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 ```
 
 !!! note "Work in progress"
-    Requests, outgoing calls and database queries are traced. Spans for Graft's own work (jobs, intent and policy stages, model calls with their token counts) and metrics come in the next releases.
+    Traces are complete. Metrics come in the next release.
 
 ## What is traced
 
@@ -18,8 +18,15 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 | Incoming HTTP (Fastify) | `POST /webhooks/github`, `GET /mcp`... one SERVER span per request, named after the route | `/healthz` and `/readyz` are not traced. A `traceparent` header on the request is honoured, so a caller's trace continues into Graft. |
 | Outgoing HTTP (`fetch`) | `GET`, `POST`... one CLIENT span per call | GitHub (Octokit) and the model providers' APIs. The span keeps the host, method and status, never the path or query. A call that never connects (DNS failure, connection refused) has no span. |
 | Postgres (`pg`) | `pg.query:SELECT graft`... | Only inside another span: the queue's polling outside any trace is not recorded. Without the query text. |
+| Jobs (pg-boss) | `job intent.generate`, `job policy.evaluate`... one CONSUMER span per run | Continues the trace of whatever queued it (see below). `graft.job.outcome` is `completed`, `failed` (retried) or `failed_permanently` with `graft.job.failure_reason`; `graft.job.retry_count` counts retries. Intent and policy jobs add `graft.outcome` (`published`, `stale`, `skipped`...). |
+| GitHub API (Octokit) | `github GET /repos/{owner}/{repo}/pulls/{pull_number}`... | Named by the route template, never by its values. `graft.github.rate_limit.remaining` is the rate-limit headroom after the call. The `fetch` span sits under it. |
+| Model calls | `chat claude-sonnet-5-5`... one CLIENT span per call | [GenAI attributes](https://opentelemetry.io/docs/specs/semconv/gen-ai/): `gen_ai.provider.name`, the requested and the answering model, input, output and cache token counts, plus `graft.llm.purpose` (`writer`, `verifier`...) and `graft.llm.outcome` (`ok`, `rate_limited`, `refusal`...). Never the prompt or the answer. |
+| Intent card | `intent.card` | The writer and verifier calls of one card: `graft.card.status`, `graft.card.risk`, `graft.card.verifier`, `graft.card.calls` and `graft.card.cost_usd`. |
+| Change lock | `change.lock` | The per-PR lock every writer of the Graft comment and check runs takes. `graft.lock.wait_ms` is the time spent waiting for it; the GitHub writes made under it are its children. |
 
-On the worker, jobs are not spans yet, so its GitHub and model calls each start a trace of their own and its queries are not recorded.
+### One trace per webhook
+
+A job carries the trace context of the code that queued it, so a webhook and everything it causes form one trace: `POST /webhooks/github` → `job github.webhook` → `job intent.generate` → the GitHub reads, the model calls, `change.lock` and the comment write → `job policy.evaluate` → ... The context travels in the job's data under `_otel` (only the W3C `traceparent` and `tracestate`), and the worker removes it before the job reads its data. Cron jobs start a trace of their own.
 
 ## Logs and traces
 
