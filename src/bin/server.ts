@@ -3,7 +3,7 @@ import { shutdownTelemetry } from "../telemetry/index.js";
 import { bootstrap } from "./bootstrap.js";
 
 async function main(): Promise<void> {
-  const deps = await bootstrap({ supervise: false });
+  const deps = await bootstrap({ supervise: false, migrate: true });
   const app = await buildServer(deps);
 
   let stopping = false;

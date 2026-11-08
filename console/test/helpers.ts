@@ -6,6 +6,7 @@ import { buildApp } from "../server/src/app.js";
 import type { GithubOAuth } from "../server/src/auth.js";
 import { type Config, loadConfig } from "../server/src/config.js";
 import { createReadOnlyDb, type Db } from "../server/src/db.js";
+import type { GraftApi } from "../server/src/graft.js";
 import { loadWebAssets } from "../server/src/static.js";
 
 export const SESSION_SECRET = "s".repeat(40);
@@ -57,6 +58,7 @@ export async function testApp(o: {
   oauth?: GithubOAuth;
   now?: () => number;
   pgboss?: boolean;
+  graft?: GraftApi;
 }) {
   const db = o.db ?? createReadOnlyDb(o.config.databaseUrl, { statementTimeoutMs: 5000 });
   return buildApp({
@@ -68,5 +70,6 @@ export async function testApp(o: {
     pgboss: o.pgboss ?? false,
     ...(o.oauth ? { oauth: o.oauth } : {}),
     ...(o.now ? { now: o.now } : {}),
+    ...(o.graft ? { graft: o.graft } : {}),
   });
 }

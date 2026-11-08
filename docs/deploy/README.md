@@ -15,7 +15,7 @@ One image (the `Dockerfile` at the repository root) holds everything. It runs as
 | --- | --- | --- |
 | Server | `node --import ./dist/bin/otel.js dist/bin/server.js` (the image's default) | Receives webhooks at `POST /webhooks/github`, verifies them, records the delivery and enqueues a job. `GET /healthz` (process up) and `GET /readyz` (Postgres and queue reachable). Listens on `HOST:PORT`, `0.0.0.0:3000` in the image. |
 | Worker | `node --import ./dist/bin/otel.js dist/bin/worker.js` | Runs the jobs and the crons (feedback polling, rollups, `modes.apply`, permission refresh). No HTTP port. At least one must always run. Several are safe, because pg-boss shares the work. |
-| Migrations | `node dist/bin/migrate.js up` | One-shot, before new server and worker versions start. Both refuse to start while a migration is pending. |
+| Migrations | `node dist/bin/migrate.js up` | One-shot, before new server and worker versions start. The server also applies pending migrations on every startup; workers refuse to start while a migration is pending. The server database role needs schema-migration permissions. |
 
 `--import ./dist/bin/otel.js` is the OpenTelemetry preload. It does nothing until `OTEL_EXPORTER_OTLP_ENDPOINT` is set: see [Observability](../observability.md).
 

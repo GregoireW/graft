@@ -76,6 +76,14 @@ const EnvSchema = z.object({
   CONSOLE_GITHUB_CLIENT_ID: opt(z.string().regex(/^[A-Za-z0-9._-]{8,100}$/, "is not a client id")),
   CONSOLE_GITHUB_CLIENT_SECRET: opt(z.string().min(20, "is too short")),
   CONSOLE_ALLOWED_USERS: opt(userList),
+  CONSOLE_ALLOWED_ORGANIZATIONS: opt(userList),
+  CONSOLE_GRAFT_URL: opt(
+    httpUrl.refine((v) => {
+      const url = new URL(v);
+      return url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
+    }, "must be a base URL without a path, query, fragment or credentials"),
+  ),
+  CONSOLE_GRAFT_SECRET: opt(z.string().min(32, "must be at least 32 characters")),
   CONSOLE_SESSION_SECRET: opt(z.string().min(32, "must be at least 32 characters")),
   CONSOLE_SESSION_HOURS: withDefault(intString(1, 168), "12"),
   CONSOLE_TIME_ZONE: withDefault(timeZone, "UTC"),
@@ -90,6 +98,7 @@ export type GithubAuth = {
   clientId: string;
   clientSecret: string;
   allowedUsers: string[];
+  allowedOrganizations: string[];
   sessionSecret: string;
   sessionHours: number;
 };
@@ -104,6 +113,7 @@ export interface Config {
   dailyTokenBudget: number;
   requireReadOnlyRole: boolean;
   statementTimeoutMs: number;
+  graft: { url: string; secret: string } | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -113,6 +123,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(`invalid console configuration:\n  ${lines.join("\n  ")}`);
   }
   const e = parsed.data;
+  if (Boolean(e.CONSOLE_GRAFT_URL) !== Boolean(e.CONSOLE_GRAFT_SECRET)) {
+    throw new ConfigError("CONSOLE_GRAFT_URL and CONSOLE_GRAFT_SECRET must be set together");
+  }
+  if (e.CONSOLE_ALLOWED_ORGANIZATIONS && !e.CONSOLE_GRAFT_URL) {
+    throw new ConfigError(
+      "CONSOLE_ALLOWED_ORGANIZATIONS needs CONSOLE_GRAFT_URL and CONSOLE_GRAFT_SECRET",
+    );
+  }
   let auth: Config["auth"];
   if (e.CONSOLE_AUTH === "none") {
     // Without sign-in the console must not be reachable from the network.
@@ -128,19 +146,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         "CONSOLE_PUBLIC_URL",
         "CONSOLE_GITHUB_CLIENT_ID",
         "CONSOLE_GITHUB_CLIENT_SECRET",
-        "CONSOLE_ALLOWED_USERS",
         "CONSOLE_SESSION_SECRET",
       ] as const
     ).filter((k) => e[k] === undefined);
     if (missing.length > 0) {
       throw new ConfigError(`CONSOLE_AUTH=github needs ${missing.join(", ")}`);
     }
+    if (!e.CONSOLE_ALLOWED_USERS && !e.CONSOLE_ALLOWED_ORGANIZATIONS) {
+      throw new ConfigError(
+        "CONSOLE_AUTH=github needs CONSOLE_ALLOWED_USERS or CONSOLE_ALLOWED_ORGANIZATIONS",
+      );
+    }
     auth = {
       mode: "github",
       publicUrl: (e.CONSOLE_PUBLIC_URL as string).replace(/\/+$/, ""),
       clientId: e.CONSOLE_GITHUB_CLIENT_ID as string,
       clientSecret: e.CONSOLE_GITHUB_CLIENT_SECRET as string,
-      allowedUsers: e.CONSOLE_ALLOWED_USERS as string[],
+      allowedUsers: e.CONSOLE_ALLOWED_USERS ?? [],
+      allowedOrganizations: e.CONSOLE_ALLOWED_ORGANIZATIONS ?? [],
       sessionSecret: e.CONSOLE_SESSION_SECRET as string,
       sessionHours: e.CONSOLE_SESSION_HOURS,
     };
@@ -155,5 +178,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dailyTokenBudget: e.CONSOLE_DAILY_TOKEN_BUDGET,
     requireReadOnlyRole: e.CONSOLE_REQUIRE_READONLY_ROLE,
     statementTimeoutMs: e.CONSOLE_STATEMENT_TIMEOUT_MS,
+    graft:
+      e.CONSOLE_GRAFT_URL && e.CONSOLE_GRAFT_SECRET
+        ? { url: e.CONSOLE_GRAFT_URL.replace(/\/+$/, ""), secret: e.CONSOLE_GRAFT_SECRET }
+        : null,
   };
 }

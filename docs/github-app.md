@@ -23,7 +23,15 @@ Registering the report manifest is the safest default. See [Modes](features/mode
 
 `gh webhook forward` does **not** work for GitHub App webhooks (it only supports repository and organization webhooks). Use smee, or ngrok / cloudflared pointed at `http://localhost:3000/webhooks/github`.
 
-After registering, record the App's **slug** too. Setting `GITHUB_APP_SLUG` enables the `<slug>[bot]` fallback that recognises Graft's own comment when `performed_via_github_app` is missing from the comments API (decision D13; see [architecture.md](architecture.md#managed-pr-comment)). Install the App on **selected** repositories only; [docs/pilots/onboarding.md](pilots/onboarding.md) explains why and lists what Graft reads and stores.
+After registering, record the App's **slug** too. Setting `GITHUB_APP_SLUG` enables the `<slug>[bot]` fallback that recognises Graft's own comment when `performed_via_github_app` is missing from the comments API (decision D13; see [architecture.md](architecture.md#managed-pr-comment)). For a pilot, install the App on **selected** repositories; [docs/pilots/onboarding.md](pilots/onboarding.md) explains why and lists what Graft reads and stores. Alternatively, install it on all repositories and turn on the [database-backed repository filter](console.md#repository-activation) before receiving repository events.
+
+## Console access and repository activation
+
+No new GitHub App permission or webhook event is needed for repository activation. Both shipped manifests already include `metadata: read` for repository access and collaborator-permission checks, and organization `members: read` for the allowed-organization membership check. Repository administrators enable or disable Graft processing in its database; this does not edit GitHub repository settings and needs no `administration` permission.
+
+For an older App, check **GitHub App settings → Permissions & events → Organization permissions → Members: Read-only**. If it was missing, save the change and have an organization owner accept the updated permissions on each installation. Organization-based console sign-in needs an active installation on that organization; explicitly allowed users do not need organization membership.
+
+The console retains its separate, scope-free GitHub OAuth App and callback URL; no additional OAuth scopes are required. Configure the console allow-lists and signed Graft connection as described in [the console setup](console.md#repository-activation). Installing on all repositories grants the App access to all of them: Graft's activation list is a processing filter, not a GitHub permission boundary.
 
 ## More than one account
 

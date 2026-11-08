@@ -75,7 +75,8 @@ export function mcpRoutes(deps: ToolDeps) {
       const blocked = failures.check(ip);
       if (!blocked.ok) return tooMany(reply, blocked.retryAfterSeconds);
       const token = parseBearer(req.headers.authorization);
-      const auth = token === null ? null : await authorizeToken(deps.db, token);
+      const auth =
+        token === null ? null : await authorizeToken(deps.db, token, deps.config.repositoryFilter);
       if (auth === null) {
         failures.fail(ip);
         return unauthorized(reply);

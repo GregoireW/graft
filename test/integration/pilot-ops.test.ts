@@ -374,6 +374,24 @@ async function seedEverything(o: { id: number; repo: number; login: string; seq:
     deleted: true,
   });
   const head = SHA(o.seq * 10 + 1);
+  await t.db
+    .insertInto("enabled_repositories")
+    .values({
+      repository_id: o.repo,
+      installation_id: o.id,
+      enabled_by: "operator",
+      enabled_by_id: 7,
+    })
+    .execute();
+  await t.db
+    .insertInto("repository_filter_changes")
+    .values({
+      repository_id: o.repo,
+      action: "enabled",
+      actor: "operator",
+      actor_id: 7,
+    })
+    .execute();
   const change = await addChange(t.db, {
     repositoryId: o.repo,
     prNumber: 1,
@@ -484,6 +502,12 @@ async function countsFor(id: number, repo: number): Promise<Record<string, numbe
   const runs = sql`(select id from review_time_runs where repository_id = ${repo})`;
   return {
     installations: await n(sql`select count(*) as n from installations where id = ${id}`),
+    enabled_repositories: await n(
+      sql`select count(*) as n from enabled_repositories where repository_id = ${repo}`,
+    ),
+    repository_filter_changes: await n(
+      sql`select count(*) as n from repository_filter_changes where repository_id = ${repo}`,
+    ),
     repositories: await n(
       sql`select count(*) as n from repositories where installation_id = ${id}`,
     ),
@@ -958,13 +982,13 @@ describe("operations CLI", () => {
 
     // One migration behind: every command stops with the same instruction.
     const down = await migrateDownOne(t.db);
-    expect(down).toEqual(["0017_intent_requested"]);
+    expect(down).toEqual(["0018_repository_filter"]);
     try {
       err = "";
       expect(await opsMain(["pilot", "doctor", "--installation", "1"], io, deps())).toBe(2);
       expect(err).toBe("run pnpm db:migrate\n");
     } finally {
-      expect(await migrateToLatest(t.db)).toEqual(["0017_intent_requested"]);
+      expect(await migrateToLatest(t.db)).toEqual(["0018_repository_filter"]);
     }
   });
 });

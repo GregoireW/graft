@@ -152,6 +152,51 @@ describe("mutation guard: classification", () => {
 
 const allowAll: MutationGate = async () => ({ allowed: true });
 
+it("repository deactivation refuses neutral checks and comments even on an existing client", async () => {
+  const api = createFakeGitHubApi();
+  let enabled = true;
+  const factory = createGitHubClientFactory({
+    appId: 12345,
+    privateKey: TEST_PRIVATE_KEY,
+    baseUrl: "https://api.github.com",
+    gate: allowAll,
+    repositoryGate: async () => enabled,
+    fetch: api.fetch,
+  });
+  const client = await factory.forInstallation(1);
+  await client.request("POST /repos/{owner}/{repo}/check-runs", {
+    owner: OWNER,
+    repo: REPO,
+    name: "graft/intent",
+    head_sha: SHA,
+    status: "completed",
+    conclusion: "neutral",
+  });
+  const before = api.requests.length;
+  enabled = false;
+  for (const operation of [
+    () =>
+      client.request("POST /repos/{owner}/{repo}/check-runs", {
+        owner: OWNER,
+        repo: REPO,
+        name: "graft/intent",
+        head_sha: SHA,
+        status: "completed",
+        conclusion: "neutral",
+      }),
+    () =>
+      client.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        owner: OWNER,
+        repo: REPO,
+        issue_number: 1,
+        body: "review",
+      }),
+  ]) {
+    expect((await refusal(operation())).refusal).toBe("repository_disabled");
+  }
+  expect(api.requests).toHaveLength(before);
+});
+
 async function refusal(promise: Promise<unknown>): Promise<MutationRefusedError> {
   try {
     await promise;

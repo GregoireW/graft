@@ -36,7 +36,7 @@ Coding agents open pull requests faster than people can review them, and a PR de
 | **Evaluation set**<br/>`pnpm eval`: encrypted pilot case sets outside the repo, blind labeling, Cohen's kappa, fake and live runs, and a synthetic set with a saved baseline in CI. [More](docs/features/evaluation.md) | **Pilots and the gate**<br/>Onboarding kit, verified-reviewer votes, a Wilson-interval Phase 0 gate report, review-time baseline, daily rollup, incidents and offboarding. [More](docs/features/pilots-and-gate.md) |
 | **Modes, approvals and break-glass**<br/>Per-repository `policy_mode`, `guard_mode` and `mcp_write` under a server ceiling, and a write allow-list that refuses anything a mode does not permit. In enforce mode `graft/policy` counts real approvals (write access, current head, verified teams); a maintainer's `graft:break-glass` label bypasses it for one commit, and every bypass is audited. [More](docs/features/modes.md) | **Post-merge guard and revert PRs**<br/>Watches `main`'s CI, names the culprit commit once a failure is confirmed, and in enforce mode opens a labelled revert PR built from blob SHAs, without reading code. Auto-merge of `trivial` or `logic` reverts is opt-in, never for `sensitive`. [More](docs/features/guard.md) |
 | **MCP server**<br/>`get_status`, `get_policy`, `report_provenance` and `open_change` at `/mcp` for agents, with per-repository tokens stored as hashes. Reported provenance can only tighten a verdict; `open_change` needs `mcp_write`. [More](docs/features/mcp.md) | **Gates from data**<br/>`pnpm graft gate report` decides the Phase 0 gate (card accuracy) and the Phase 1 gate (PRs merged with no human, review minutes, breakages caught, escaped defects), measured from enforce-mode rows and previewed from report mode. [More](docs/features/pilots-and-gate.md) |
-| **Any model provider**<br/>The Claude API by default, or a server-side provider registry: Anthropic-format gateways, OpenAI-compatible APIs (OpenAI, OpenRouter, Mistral, DeepSeek, Gemini), Gemini on Vertex AI with Application Default Credentials, local models (Ollama, vLLM, LM Studio), isolated `claude`, `codex` and `opencode` CLIs for self-hosted installs, and per-installation Copilot billing. [More](docs/model-providers.md) | **Operator console**<br/>An optional, read-only console: a daily journal, every PR's record, what needs a human, the gate, the token budget, the job queue and the models that wrote the cards. [More](docs/console.md) |
+| **Any model provider**<br/>The Claude API by default, or a server-side provider registry: Anthropic-format gateways, OpenAI-compatible APIs (OpenAI, OpenRouter, Mistral, DeepSeek, Gemini), Gemini on Vertex AI with Application Default Credentials, local models (Ollama, vLLM, LM Studio), isolated `claude`, `codex` and `opencode` CLIs for self-hosted installs, and per-installation Copilot billing. [More](docs/model-providers.md) | **Operator console**<br/>An optional dashboard with a read-only database connection: a daily journal, every PR's record, what needs a human, the gate, the budget and the job queue. Allowed users or organization members can sign in; an optional signed API lets repository admins manage activation. [More](docs/console.md) |
 | **Privacy by design**<br/>No file contents, diffs, PR titles or bodies are stored or logged: only paths, SHAs, numbers and the model's own prose. [More](docs/architecture.md#contracts) | **Live e2e scenarios**<br/>`pnpm graft e2e` proves the fakes' assumptions against real GitHub in a guarded sandbox repository, or fully offline. [More](docs/e2e.md) |
 
 ## How it works
@@ -52,7 +52,9 @@ flowchart LR
     WRK --> PG
 ```
 
-The server only verifies, deduplicates and enqueues. The worker runs one job per concern (provenance, intent, policy, pilot), re-reads everything from the GitHub API instead of trusting the webhook payload, and publishes under a per-change lock. Details: [docs/architecture.md](docs/architecture.md).
+The server verifies, deduplicates and enqueues webhooks, and optionally handles signed console repository-administration requests. The worker runs one job per concern (provenance, intent, policy, pilot), re-reads everything from the GitHub API instead of trusting the webhook payload, and publishes under a per-change lock. Details: [docs/architecture.md](docs/architecture.md).
+
+Install the App on all organization repositories while processing only an enabled subset: set `GRAFT_REPOSITORY_FILTER=on` on the server and workers, then manage the database-backed list in the console's **Repositories** tab. Filtering defaults to off. Changes take effect without deployment; enabling affects future events, and disabling requires repository-admin permission and confirmation. See [repository activation setup](docs/console.md#repository-activation).
 
 ```mermaid
 sequenceDiagram
@@ -82,8 +84,7 @@ pnpm install
 pnpm db:up                         # Postgres 17, published on 127.0.0.1:55432 only
 cp .env.example .env
 openssl genrsa -out dev.pem 2048   # throwaway key: .env.example points GITHUB_APP_PRIVATE_KEY_PATH at ./dev.pem
-pnpm db:migrate
-pnpm dev:server                    # terminal 1
+pnpm dev:server                    # terminal 1; applies pending database migrations before listening
 pnpm dev:worker                    # terminal 2
 pnpm webhook:send installation.created --delivery smoke-1   # 202 {"status":"enqueued"}
 pnpm webhook:send installation.created --delivery smoke-1   # 200 {"status":"duplicate"}
@@ -91,6 +92,8 @@ curl localhost:3000/readyz         # {"status":"ready","db":"ok","queue":"ok"}
 ```
 
 Then run the tests (`pnpm test:unit` needs nothing running; `pnpm test` also needs the database) and try `pnpm eval:ci` or `pnpm graft policy check docs/examples/graft.yaml`. Step-by-step notes, expected output and every script: [docs/getting-started.md](docs/getting-started.md). To connect a real App: [docs/github-app.md](docs/github-app.md).
+
+Wait for the server to start before starting workers on a new database. `pnpm db:migrate` remains available for explicit deployment migrations; workers check the schema but do not apply migrations.
 
 ## What a reviewer sees
 
