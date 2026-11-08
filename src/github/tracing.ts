@@ -3,16 +3,48 @@ import { withSpan } from "../telemetry/tracing.js";
 import type { GitHubClient } from "./client-factory.js";
 
 /**
- * A route template safe to export: `GET /repos/{owner}/{repo}/pulls/{pull_number}`. The values
- * stay in Octokit's parameters, never in the template, except where a caller wrote one in (a
- * revert branch, for example): any literal segment holding a digit becomes `{value}`, and a
- * query string is dropped.
+ * The fixed words of GitHub's REST routes (`repos`, `pulls`, `check-runs`...), read once from the
+ * route templates Octokit's methods carry. Anything else in a URL is a value.
  */
-export function githubRoute(url: string): string {
-  const path = url.split("?", 1)[0] ?? "";
+let routeWords: ReadonlySet<string> | undefined;
+
+export function knownRouteWords(octokit: GitHubClient): ReadonlySet<string> {
+  if (routeWords) return routeWords;
+  const words = new Set<string>();
+  for (const scope of Object.values(octokit.rest)) {
+    for (const method of Object.values(scope as Record<string, unknown>)) {
+      const url = (method as { endpoint?: { DEFAULTS?: { url?: unknown } } })?.endpoint?.DEFAULTS
+        ?.url;
+      if (typeof url !== "string") continue;
+      for (const seg of url.split("{?", 1)[0]?.split("/") ?? []) {
+        if (seg && !seg.includes("{")) words.add(seg);
+      }
+    }
+  }
+  routeWords = words;
+  return words;
+}
+
+/**
+ * A route safe to export: `/repos/{owner}/{repo}/pulls/{pull_number}`. Octokit hands the hook the
+ * caller's template, which is usually all placeholders and fixed words; but a caller can write a
+ * value into it (a branch), and a paginated request passes the absolute `next` URL. So the host,
+ * the query and any `{?...}` part are dropped, and every segment that is neither a `{placeholder}`
+ * nor a fixed word of some GitHub route becomes `{value}`.
+ */
+export function githubRoute(url: string, words: ReadonlySet<string>): string {
+  let path = url.split("{?", 1)[0] ?? "";
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      path = new URL(path).pathname;
+    } catch {
+      return "{value}";
+    }
+  }
+  path = path.split("?", 1)[0] ?? "";
   return path
     .split("/")
-    .map((seg) => (/^\{[^}]*\}$/.test(seg) || !/[0-9]/.test(seg) ? seg : "{value}"))
+    .map((seg) => (seg === "" || /^\{[^}]*\}$/.test(seg) || words.has(seg) ? seg : "{value}"))
     .join("/");
 }
 
@@ -28,9 +60,10 @@ function rateLimitRemaining(headers: unknown): number | null {
  * span under it keeps the host and status. A failed request records its status and rethrows.
  */
 export function traceGitHub(octokit: GitHubClient, o: { installationId: number | null }): void {
+  const words = knownRouteWords(octokit);
   octokit.hook.wrap("request", async (request, options) => {
     const method = String(options.method).toUpperCase();
-    const route = githubRoute(String(options.url));
+    const route = githubRoute(String(options.url), words);
     return withSpan(
       `github ${method} ${route}`,
       {

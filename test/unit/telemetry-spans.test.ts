@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { z } from "zod";
 import type { JobContext } from "../../src/core/context.js";
 import { forToken } from "../../src/github/client-factory.js";
-import { githubRoute, traceGitHub } from "../../src/github/tracing.js";
+import { githubRoute, knownRouteWords, traceGitHub } from "../../src/github/tracing.js";
 import { tracedLlm } from "../../src/llm/traced.js";
 import { type LlmClient, type LlmRequest, ZERO_USAGE } from "../../src/llm/types.js";
 import { PermanentJobError } from "../../src/queue/errors.js";
@@ -244,18 +244,29 @@ describe("model calls", () => {
 });
 
 describe("GitHub calls", () => {
-  it("U-OTEL-14 route templates only: a literal value in a template is masked", () => {
-    expect(githubRoute("/repos/{owner}/{repo}/pulls/{pull_number}")).toBe(
+  it("U-OTEL-14 a route keeps placeholders and GitHub's own words; every value is masked", () => {
+    const words = knownRouteWords(forToken("t"));
+    expect(githubRoute("/repos/{owner}/{repo}/pulls/{pull_number}", words)).toBe(
       "/repos/{owner}/{repo}/pulls/{pull_number}",
     );
+    // A value written into the template: a revert branch, or any branch without a digit.
     expect(
       githubRoute(
         "/repos/{owner}/{repo}/git/refs/heads/graft-revert/0b6f1c2e-4d5a-4b7c-9e8f-1a2b3c4d5e6f",
+        words,
       ),
-    ).toBe("/repos/{owner}/{repo}/git/refs/heads/graft-revert/{value}");
-    expect(githubRoute("/app/installations/{installation_id}/access_tokens?per_page=100")).toBe(
-      "/app/installations/{installation_id}/access_tokens",
+    ).toBe("/repos/{owner}/{repo}/git/refs/{value}/{value}/{value}");
+    expect(githubRoute("/repos/{owner}/{repo}/git/refs/heads/feature-secret", words)).toBe(
+      "/repos/{owner}/{repo}/git/refs/{value}/{value}",
     );
+    // Pagination hands over the absolute `next` URL, names included.
+    expect(
+      githubRoute("https://api.github.com/repos/acme/secret-repo/pulls?state=all&page=2", words),
+    ).toBe("/repos/{value}/{value}/pulls");
+    expect(
+      githubRoute("/app/installations/{installation_id}/access_tokens{?per_page}", words),
+    ).toBe("/app/installations/{installation_id}/access_tokens");
+    expect(githubRoute("https://[broken/repos/acme", words)).toBe("{value}");
   });
 
   it("U-OTEL-15 each request is a span named by its route, with status and rate-limit headroom", async () => {
