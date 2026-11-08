@@ -36,4 +36,5 @@ USER node
 EXPOSE 3100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3100)+'/readyz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
-CMD ["node", "--enable-source-maps", "dist/server.js"]
+# --import loads the OpenTelemetry preload; it does nothing until OTEL_EXPORTER_OTLP_ENDPOINT is set.
+CMD ["node", "--enable-source-maps", "--import", "./dist/otel.js", "dist/server.js"]

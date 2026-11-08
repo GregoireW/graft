@@ -1,3 +1,4 @@
 # The console is its own pnpm project (own lockfile), so Graft's install and image never include it.
 allowBuilds:
   esbuild: true
+  protobufjs: false

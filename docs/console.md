@@ -75,6 +75,7 @@ flowchart LR
 | `CONSOLE_REQUIRE_READONLY_ROLE` | `true` | `false` lets the console start with a role that can write (local development only; the session stays read-only). |
 | `CONSOLE_STATEMENT_TIMEOUT_MS` | `10000` | Per-query timeout. |
 | `HOST`, `PORT`, `LOG_LEVEL` | `127.0.0.1`, `3100`, `info` | The image sets `HOST=0.0.0.0`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` and the other `OTEL_*` | unset | Traces and metrics, as for Graft: see [Observability](observability.md#the-console). Off when unset. |
 
 Application tables are resolved through the connection's PostgreSQL `search_path`, not a fixed
 `public` schema. Set the console role's search path to the schema used by Graft's migrations.

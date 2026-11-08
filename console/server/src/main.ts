@@ -4,6 +4,8 @@ import { buildApp } from "./app.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { createReadOnlyDb, ReadOnlyError, verifyReadOnly } from "./db.js";
 import { loadWebAssets } from "./static.js";
+import { shutdownTelemetry } from "./telemetry/index.js";
+import { traceFields } from "./telemetry/log.js";
 
 declare const __CONSOLE_VERSION__: string;
 const VERSION = typeof __CONSOLE_VERSION__ === "string" ? __CONSOLE_VERSION__ : "dev";
@@ -16,6 +18,7 @@ async function main(): Promise<void> {
       paths: ["req.headers.cookie", "req.headers.authorization", 'res.headers["set-cookie"]'],
       censor: "[redacted]",
     },
+    mixin: traceFields,
   });
   const db = createReadOnlyDb(config.databaseUrl, {
     statementTimeoutMs: config.statementTimeoutMs,
@@ -44,9 +47,11 @@ async function main(): Promise<void> {
     try {
       await app.close();
       await db.destroy();
+      await shutdownTelemetry();
       process.exit(0);
     } catch (err) {
       log.error({ err }, "error during shutdown");
+      await shutdownTelemetry();
       process.exit(1);
     }
   };

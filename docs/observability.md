@@ -2,7 +2,7 @@
 
 [Docs index](README.md) · [Configuration](configuration.md) · [Deploying](deploy/README.md)
 
-The server and the worker can send traces and metrics to any OpenTelemetry collector or OTLP backend (an OpenTelemetry Collector, OpenObserve, Grafana Tempo, Jaeger, Honeycomb and others). It is off by default. One variable turns it on:
+The server, the worker and the [console](console.md) can send traces and metrics to any OpenTelemetry collector or OTLP backend (an OpenTelemetry Collector, OpenObserve, Grafana Tempo, Jaeger, Honeycomb and others). It is off by default. One variable turns it on:
 
 ```sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
@@ -108,3 +108,45 @@ environment:
 ```
 
 The collector needs an `otlp` receiver and a `traces` pipeline, plus a `metrics` pipeline for the metrics. Sending straight to a backend works too: set its OTLP URL as the endpoint and its credentials in `OTEL_EXPORTER_OTLP_HEADERS`. A collector gives you retries and a disk queue when the backend is down; the SDK only buffers in memory.
+
+## Sending to OpenObserve
+
+[OpenObserve](https://openobserve.ai/) takes OTLP over HTTP under its organization's API path. With a collector in front (recommended), the collector's exporter points at OpenObserve:
+
+```yaml
+# otel-collector config
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  otlphttp/openobserve:
+    endpoint: https://openobserve.example.com/api/default # .../api/<organization>
+    headers:
+      Authorization: Basic ${env:OPENOBSERVE_AUTH} # base64 of "<user email>:<token>"
+      stream-name: default
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp/openobserve]
+    metrics:
+      receivers: [otlp]
+      exporters: [otlphttp/openobserve]
+```
+
+And Graft sends to the collector: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`.
+
+Straight to OpenObserve, without a collector:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=https://openobserve.example.com/api/default
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20<base64 of user:token>,stream-name=default
+```
+
+In OpenObserve, the traces are under **Traces** (filter on `service_name`: `graft-server`, `graft-worker`, `graft-console`) and the metrics under **Metrics**, one stream per metric name (`graft_job_runs`, `gen_ai_client_token_usage`...). The `trace_id` on Graft's log lines links a log search to its trace.
+
+## The console
+
+The [console](console.md) has its own preload, `node --import ./dist/otel.js dist/server.js`, which its image and `console/compose.coolify.yaml` use. It reads the same variables and is named `graft-console`. It traces its API and sign-in requests (not the health probes or the web app's files), its read-only queries and its calls to GitHub and to Graft; a call to Graft carries its trace context, so a repository activation is one trace across both. Its exported attributes go through the same allow-list, kept identical to Graft's by a test.
